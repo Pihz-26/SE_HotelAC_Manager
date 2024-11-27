@@ -1,4 +1,11 @@
 from pydantic import BaseModel
+from typing import Optional
+
+
+class FanRate(BaseModel):
+    lowSpeedRate: float
+    midSpeedRate: float
+    highSpeedRate: float
 
 # 房间空调状态设置的请求体
 class RoomACStatusControlRequest(BaseModel):
@@ -12,5 +19,16 @@ class AdminLoginRequest(BaseModel):
     username: str
     password: str
     
+class Person(BaseModel):
+    peopleId: int
+    peopleName: str
+    
+    
+class CenterAcControlRequest(BaseModel):
+    mode: int
+    resourceLimit: int
+    fanRate: Optional[FanRate]
+    
+
 
 
