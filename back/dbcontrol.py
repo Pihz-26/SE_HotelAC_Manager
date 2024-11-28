@@ -74,6 +74,13 @@ class acControl(SQLModel, table=True):
     record_time: datetime = Field(default_factory=datetime.now,  primary_key=True, description="the time of changing AC") 
     ac_model: ACModel = Field(default=ACModel.Cold)
     temperature: int = Field(default=26)
+
+class acPamater(SQLModel, table=True):
+    precept: int = Field(default=1, primary_key=True)
+    low_cost_rate: float = Field(default=0.5)
+    middle_cost_rate: float = Field(default=1.0)
+    high_cost_rate: float = Field(default=2.0)
+
        
        
 class User(SQLModel, table=True):

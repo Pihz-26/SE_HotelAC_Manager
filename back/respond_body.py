@@ -19,8 +19,6 @@ class RoomACData(BaseModel):
     totalCost: float
     
 
-
-      
 class CheckInState(BaseModel):
     roodId: int
     roomLevel: str
@@ -143,10 +141,13 @@ class WeeklyPeopleLogRespond(BaseModel):
     data: Optional[PeopleLog]
     
 
-
-    
-    
+   
 class RoomStatusRespond(BaseModel):
     code: int
     message: str
     data: Optional[RoomStatus]
+
+class AdjustRequest(SQLModel):
+    mode: int  # 空调模式，0为制冷，1为制热
+    resourceLimit: int  # 1房间分配限制，0为无限制
+    fanRates: Dict[str, float]  # 风速费率，包括低速、中速、高速

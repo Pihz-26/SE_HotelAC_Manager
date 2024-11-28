@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from core import *
 
 app = FastAPI()
 
@@ -39,8 +40,12 @@ async def print_record():
 
 # 管理员调整中央空调的全局设置，包括工作模式、温度范围和风速费率。
 @app.get("/central-aircon/adjust")
-async def control_ac():
-    pass
+async def control_ac(
+    adjust_request: AdjustRequest,  # 请求数据
+    session: SessionDep # 获取数据库 session
+):
+    # 调用core.py中的control_ac_core函数
+    return await control_ac(adjust_request, session)
 
 # 管理员实时获取酒店所有房间空调的运行状态和参数信息。
 @app.get("/aircon/status")
