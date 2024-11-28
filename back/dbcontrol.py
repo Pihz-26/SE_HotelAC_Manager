@@ -168,7 +168,6 @@ def updateRoomAcData(room_id:str, cost:int, room_ac_data:RoomAcData, session: Se
     result = session.exec(statement)
     for room in result:
         room.cost = cost
-        
         room.wind_level = room_ac_data.wind_level
         room.sweep = room_ac_data.sweep
         room.power = room_ac_data.power
