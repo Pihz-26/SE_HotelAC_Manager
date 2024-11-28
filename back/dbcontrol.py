@@ -1,184 +1,91 @@
-from typing import Annotated
-from typing import Union, List, Optional
+# back/dbcontrol.py
+
+from typing import List, Optional
 from enum import Enum
-
-
-from fastapi import Depends, FastAPI, HTTPException, Query
-from sqlmodel import Field, Session, SQLModel, Relationship, ForeignKey, create_engine, select
+from sqlmodel import Field, Session, SQLModel, Relationship, select, create_engine
 from datetime import datetime
+import json
 
-'''
-此处文件主要用于更新数据库中的数据，对数据库中的数据进行相应的查询操作，同时返回
-整个过程中按照一定思路给出了不同应答情况的返回数据
-'''
-
-
+# 定义枚举类型
 class RoomLevel(str, Enum):
-    Standard= "标准间"
-    Queen= "大床房"
-    
-class WindLevel(int, Enum):
-    Low= 0
-    Medium= 1
-    High= 2
-    
-class ACModel(int, Enum):
-    Cold= 0
-    Warm= 1
+    Standard = "标准间"
+    Queen = "大床房"
 
+class WindLevel(str, Enum):
+    Low = "低"
+    Medium = "中"
+    High = "高"
 
-# 房间数据表    
+class ACModel(str, Enum):
+    Cold = "制冷"
+    Warm = "制热"
+
+# 房间数据表
 class Room(SQLModel, table=True):
-    room_id: str   =  Field(index=True, description="Room number", primary_key=True)
-    room_level: RoomLevel = Field(default = RoomLevel.Standard, description="Room level")
-    state: bool = Field(default=False, description="whether the room have been checked in")
-    temperature: int = Field(default=None, description="The current temperature of the room")
-    
-    # 当前房间中空调的状态，其中包括当前花费
-    cost: int = Field(default = 0, description="AC cost in the room")
-    # 、风速、是否开启扫风、是否开机
-    wind_level: WindLevel = Field(default=WindLevel.Low, description="AC's wind level")
-    sweep: bool = Field(default=False, description="Launch sweep mode or not")
-    power: bool = Field(default=False, description="Whether the AC has been launched or not")
-    # 定义与 HotelCheck 的关系
+    room_id: int = Field(index=True, description="房间号", primary_key=True)
+    room_level: RoomLevel = Field(default=RoomLevel.Standard, description="房间类型")
+    state: bool = Field(default=False, description="是否已入住")
+    room_temperature: int = Field(default=25, description="当前室温")
+    cost: float = Field(default=0.0, description="房间空调费用")
+    total_cost: float = Field(default=0.0, description="房间空调总费用")
+    temperature: int = Field(default=24, description="设定温度")
+    wind_speed: WindLevel = Field(default=WindLevel.Low, description="空调风速")
+    sweep: str = Field(default="关", description="扫风功能开启状态")
+    power: str = Field(default="off", description="空调电源状态")
+    mode: ACModel = Field(default=ACModel.Cold, description="空调模式")
+    status: int = Field(default=0, description="空调状态")  # 0-关闭，1-运行
+    time_slice: int = Field(default=0, description="分配的时间片")
+
     hotel_checks: List["HotelCheck"] = Relationship(back_populates="room")
-    
-    
-# 酒店入住情况记录表, 将
+
+# 酒店入住情况记录表
 class HotelCheck(SQLModel, table=True):
-    person_id: str                 = Field(index=True, default=None, primary_key=True)
-    guest_name: str         = Field(index=True, description="Name of the guest")
-    room_id: str        = Field(foreign_key="room.room_id",index=True, primary_key=True,description="Room number assigned to the guest")
-    check_in_date: datetime = Field(default_factory=datetime.now, primary_key=True, description="Check-in date and time")
-    check_out_date: Optional[datetime] = Field(default=None, description="Check-in date and time")
-    # 定义与 Room 的关系
+    person_id: int = Field(default=None, primary_key=True)
+    guest_name: str = Field(index=True, description="入住者姓名")
+    room_id: int = Field(foreign_key="room.room_id", index=True, description="房间号")
+    check_in_date: datetime = Field(default_factory=datetime.now, description="入住时间")
+    check_out_date: Optional[datetime] = Field(default=None, description="退房时间")
     room: Room = Relationship(back_populates="hotel_checks")
-    
 
 # 空调操作记录表
-class acLog(SQLModel, table=True):
-    room_id: str = Field(index=True, primary_key=True, foreign_key="room.room_id",description="Room number")
-    
-    # 空调模式和温度设置，此处的内容应该从acControl中获取
+class AcLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    room_id: int = Field(index=True, foreign_key="room.room_id", description="房间号")
     ac_model: ACModel = Field(default=ACModel.Cold)
     temperature: int = Field(default=26)
-    
-    change_time: datetime = Field(default_factory=datetime.now,  primary_key=True, description="the time of changing AC state") 
-    
-    power:bool = Field(default=False, description="Whether the AC has been launched or not")
-    wind_level: WindLevel = Field(default=WindLevel.Low, description="AC's wind level")
-    sweep: bool = Field(default=False, description="Launch sweep mode or not")
+    change_time: datetime = Field(default_factory=datetime.now, description="空调状态更改时间")
+    power: str = Field(default="off", description="空调电源状态")
+    wind_speed: WindLevel = Field(default=WindLevel.Low, description="空调风速")
+    sweep: str = Field(default="关", description="扫风功能开启状态")
+    cost: float = Field(default=0.0, description="此次操作消耗的功耗")
 
-# 中央空调控制表，按照需求应该只用调节温度和模式
-class acControl(SQLModel, table=True):
-    record_time: datetime = Field(default_factory=datetime.now,  primary_key=True, description="the time of changing AC") 
+# 中央空调控制表
+class AcControl(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    record_time: datetime = Field(default_factory=datetime.now, description="中央空调设置时间")
     ac_model: ACModel = Field(default=ACModel.Cold)
-    temperature: int = Field(default=26)
-       
-       
-class User(SQLModel, table=True):
-    user_id: str = Field(default="123")
-    password: str = Field(default="123")
+    resource_limit: int = Field(default=0, description="资源限制")
+    fan_rates: str = Field(default="", description="风速费率，以JSON字符串形式存储")
 
-  
-class RoomCheckIn(): 
-    '''
-    类中应该传入两个数据，分别为房间号和入住人数据，入住人数据用(name, id)的元组来储存
-    '''
-    def __init__(self, room_id:str, people: List[tuple]):
-        self.room_id:str = room_id
-        self.people:List = people
-
-class RoomAcData():
-    '''
-    类中包括房间中对空调的数据更改
-    '''
-    def __init__(self, wind_level:WindLevel, sweep: bool, power: bool, model:ACModel, temperature:int):
-        self.wind_level = wind_level
-        self.sweep = sweep
-        self.power = power
-        self.model = model
-        self.temperature = temperature       
-
-app =FastAPI()
-
+# 数据库初始化和会话
 sqlite_file_name = "database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 connect_args = {"check_same_thread": False}
-engine = create_engine(sqlite_url, connect_args=connect_args)
-
+engine = create_engine(sqlite_url, echo=False, connect_args=connect_args)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    # 初始化房间数据
+    with Session(engine) as session:
+        for floor in range(2, 6):  # 楼层 2-5
+            for room_number in range(1, 41):  # 每层 40 个房间
+                room_id = floor * 1000 + room_number
+                room_level = RoomLevel.Standard if room_number > 10 else RoomLevel.Queen
+                room = Room(room_id=room_id, room_level=room_level)
+                session.add(room)
+        session.commit()
 
 def get_session():
     with Session(engine) as session:
         yield session
-
-SessionDep = Annotated[Session, Depends(get_session)]
-
-# 数据库中编写入住数据，请在执行之前进行相应数据合法性检测
-def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
-    final_data = []
-    for person in check_in_data.people:
-        hotel_check = HotelCheck()
-        hotel_check.guest_name = person[0]
-        hotel_check.person_id = person[1]
-        hotel_check.room_id = check_in_data.room_id
-        final_data.append(hotel_check)
-    session.add_all(final_data)
-    session.commit()
-
-
-# 数据库中进行退房数据更改，请在执行前进行相应数据的合法性检测
-def data_check_out(room_id: str, session: SessionDep):  
-    # 寻在出住房数据中房间号相同，入住日期存在，退房日期不存在的数据
-    statement = select(HotelCheck).where(
-        HotelCheck.room_id == room_id,
-        HotelCheck.check_in_date != None,  # check_out_date 不为 None
-        HotelCheck.check_out_date == None 
-    )
-    results = session.exec(statement)
-    # 将其中的退房数据全部赋予当前值
-    current_time = datetime.now()
-    for hotel_check in results:
-        hotel_check.check_out_date = current_time
-        
-    session.commit()
-
-# 空调控制记录
-def updateACLog(room_id:str, room_ac_data:RoomAcData, session: SessionDep):
-    ac_log = acLog()
-    ac_log.room_id = room_id
-    
-    ac_log.wind_level = room_ac_data.wind_level
-    ac_log.sweep = room_ac_data.sweep
-    ac_log.power = room_ac_data.power
-    
-    ac_log.ac_model = room_ac_data.model
-    ac_log.temperature = room_ac_data.temperature
-    
-    session.add(ac_log)
-    session.commit()
-
-# 更新当前房间的空调状态    
-def updateRoomAcData(room_id:str, cost:int, room_ac_data:RoomAcData, session: SessionDep):
-    statement = select(Room).where(Room.room_id == room_id)
-    result = session.exec(statement)
-    for room in result:
-        room.cost = cost
-        
-        room.wind_level = room_ac_data.wind_level
-        room.sweep = room_ac_data.sweep
-        room.power = room_ac_data.power
-        
-# 更改空调状态控制表
-def updateAcControl(ac_model: ACModel, temperature: int):
-    ac_control =  acControl()
-    ac_control.ac_model = ac_model
-    ac_control.temperature = temperature
-    
-
-   
-
