@@ -30,6 +30,6 @@ class CenterAcControlRequest(BaseModel):
     resourceLimit: int
     fanRate: Optional[FanRate]
     
-
+pass
 
 
