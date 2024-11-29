@@ -79,6 +79,7 @@ class acControl(SQLModel, table=True):
 class User(SQLModel, table=True):
     user_id: str = Field(default="123")
     password: str = Field(default="123")
+    role: str = Field(default="管理员")
 
   
 class RoomCheckIn(): 
@@ -179,6 +180,17 @@ def updateAcControl(ac_model: ACModel, temperature: int):
     ac_control.ac_model = ac_model
     ac_control.temperature = temperature
     
-
-   
+# 验证用户密码（不加密）
+def verify_user_password(user_id: str, password: str, session: Session):
+    statement = select(User).where(User.user_id == user_id)
+    user = session.exec(statement).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 直接比较明文密码
+    if password != user.password:
+        raise HTTPException(status_code=401, detail="密码错误")
+    
+    return user
 

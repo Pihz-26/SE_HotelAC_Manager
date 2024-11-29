@@ -1,5 +1,5 @@
-from fastapi import FastAPI
-
+from fastapi import FastAPI, Header, Body
+from core import *
 app = FastAPI()
 
 # 控制指定房间的空调设置
@@ -12,12 +12,14 @@ async def room_ac_control():
 async def room_ac_state():
     pass
 
-# 管理员登录，通过验证账号和密码后，发放JWT并提供管理员的身份信息供后续请求使用。
+# 系统校验管理员权限（验证账号密码后发放JWT）
 @app.get("/admin/login")
-async def admin_login():
+# 从请求头获取Authorization字段
+async def admin_login(authorization: str = Header(...), settings: dict = Body(...)):
     pass
+    admin_login_core(authorization, settings)  
 
-# 查询管理员有权限查看的所有房间信息
+# 前台获取入住情况（查询所有房间的入住信息）
 @app.get("/stage/query")   
 async def room_state():
     pass
@@ -25,9 +27,10 @@ async def room_state():
 # 向指定房间添加新的顾客
 @app.get("/stage/add") 
 async def check_in():
-    pass
+    chect_in_core()
+    
 
-# 退房
+# 前台办理结账/退房（生成账单并更新房间状态）
 @app.get("/stage/delete")
 async def check_out():
     pass

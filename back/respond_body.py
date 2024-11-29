@@ -27,3 +27,59 @@ class AdminLoginRespond(BaseModel):
     token: str
     role: str
     
+class TotalHotelCheckInStatusRespond(BaseModel):
+    code: int
+    message: str
+    data: Optional[CheckInState]
+    
+class PeopleLog(BaseModel):
+    time: datetime
+    roomId: int
+    operation: str
+
+
+    
+class  DetailsRespond(BaseModel):
+    code: int
+    checkInTime: datetime
+    message: str
+    data: Optional[RoomRecords]
+
+
+    
+class TotalAcStatusRespond(BaseModel):
+    code: int
+    message: str
+    data: Optional[RoomAcStatus]
+    
+
+    
+class WeeklyAcControlLogRespond(BaseModel):
+    code: int
+    message: str
+    data: Optional[AcControlLog]
+ 
+   
+class WeeklyAcScheduleRespond(BaseModel):
+    code: int
+    message: str
+    data: Optional[AcScheduleLog]
+   
+
+       
+class WeeklyPeopleLogRespond(BaseModel):
+    code: int
+    message: str
+    data: Optional[PeopleLog]
+    
+  
+class RoomStatusRespond(BaseModel):
+    code: int
+    message: str
+    data: Optional[RoomStatus]
+    
+
+# 登录请求数据模型
+class LoginRequest(BaseModel):
+    user_id: str
+    password: str
