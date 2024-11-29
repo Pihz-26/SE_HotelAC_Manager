@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from core import *
 from respond_body import *
+from core import *
+from respond_body import *
 
 app = FastAPI()
 create_db_and_tables()
