@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional, Literal, List  # 引入List 
 from datetime import datetime
 
 class Person(BaseModel):
@@ -23,7 +23,7 @@ class RoomACData(BaseModel):
 
       
 class CheckInState(BaseModel):
-    roodId: int
+    roomId: int  # 拼写错误
     roomLevel: str
     cost: int
     checkInTime: datetime
@@ -90,11 +90,11 @@ class RoomStatus(BaseModel):
  
 
 class CheckInState(BaseModel):
-    roodId: int
+    roomId: int  # 拼写错误
     roomLevel: str
     cost: int
-    checkInTime: datetime
-    people: Optional[Person]
+    checkInTime: Optional[datetime]  # 为了符合API文档规范，可以输出None，事实上为必须
+    people: List[Person]  # 根据API文档更改为List类型
  
 class AcLogRecord(BaseModel):
     time: datetime
@@ -214,7 +214,7 @@ class WeeklyPeopleLogRespond(BaseModel):
 class RoomStatusRespond(BaseModel):
     code: int
     message: str
-    data: Optional[RoomStatus]
+    data: List[CheckInState]  # 根据API文档修改
     
 
 class FanRate(BaseModel):

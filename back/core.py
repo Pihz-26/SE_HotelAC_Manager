@@ -48,6 +48,7 @@ async def admin_login_core(data: AdminLoginRequest, session: SessionDep):
     }
        
 # 前台获取入住情况（查询所有房间的入住信息）
+# 便于演示，此处暂时只展示有人房间
 async def room_state_core(session: SessionDep, authorization: str):
     # 验证管理员身份
     # if check_admin(authorization):
@@ -55,32 +56,43 @@ async def room_state_core(session: SessionDep, authorization: str):
         # 通过 SQLModel 查询数据库中所有的房间数据
         room_data_list = []
         rooms = session.exec(select(Room)).all()
-        print(rooms)
+        print('\n', 1, rooms)
         for room in rooms:
-            # 查询当前房间的入住信息
-            hotel_checks = session.exec(select(HotelCheck).
-                where(HotelCheck.room_id == room.room_id)).all()
-            print(hotel_checks)
-            if hotel_checks:
-                # 构建住户信息
-                people_info = []
-                for check in hotel_checks:
-                    people = Person(
-                        peopleId = check.person_id,
-                        peopleName = check.guest_name,
-                        )
-                    people_info.append(people)
-                
-                # 创建响应数据结构
+            if room.state == False:
                 room_data = CheckInState(
-                    roomId=room.room_id,
-                    roomLevel=room.room_level.value,  # 通过枚举值获取房间类型
-                    cost=room.cost,
-                    # 获取第一次入住时间
-                    checkInTime = room.hotel_checks[0].check_in_date.isoformat(),
-                    people=people_info,
-                    )
-                room_data_list.append(room_data)
+                roomId=int(room.room_id),
+                roomLevel=room.room_level.value,  # 通过枚举值获取房间类型
+                cost=0,
+                checkInTime = None,
+                people=[],
+                )
+            else:
+                # 查询当前房间的入住信息
+                hotel_checks = session.exec(select(HotelCheck).
+                    where(HotelCheck.room_id == room.room_id)).all()
+                print('\n', 2, hotel_checks)
+                if hotel_checks:
+                    # 构建住户信息
+                    people_info = []
+                    for check in hotel_checks:
+                        people = Person(
+                            peopleId = 0 if check.person_id == "None" else int(check.person_id),
+                            peopleName = check.guest_name,
+                            )
+                        people_info.append(people)
+                    print('\n', 3, people_info)
+                    # 创建响应数据结构
+                    print(room.room_id)
+                    if room.state:
+                        room_data = CheckInState(
+                            roomId=int(room.room_id),
+                            roomLevel=room.room_level.value,  # 通过枚举值获取房间类型
+                            cost=room.cost,
+                            # 获取第一次入住时间
+                            checkInTime = room.hotel_checks[0].check_in_date.strftime("%Y-%m-%dT%H:%M:%S"),
+                            people=people_info,
+                            )
+            room_data_list.append(room_data)
         # 构建并返回成功响应
         response = RoomStatusRespond(
             code=0,
@@ -91,10 +103,10 @@ async def room_state_core(session: SessionDep, authorization: str):
 
 # 前台办理入住（向指定房间添加新的顾客）
 async def check_in_core(session: SessionDep, authorization: str, data: dict):    
-    print(authorization)
-    # 验证管理员身份
-    if check_admin(authorization):
-        print("身份验证成功！")
+    # print(authorization)
+    # # 验证管理员身份
+    # if check_admin(authorization):
+    #     print("身份验证成功！")
         # 处理请求体中的房间号顾客名数据
         roomId = data.get("roomId")
         roomId = f"{roomId}"
@@ -121,8 +133,6 @@ async def check_in_core(session: SessionDep, authorization: str, data: dict):
             
             print(room_data)
             data_check_in(room_data, session)
-            room.state = True  # 更新房间状态为已入住
-            
             respond = NormalRespond(code=0, message="顾客添加成功")
         # 返回响应
         return respond

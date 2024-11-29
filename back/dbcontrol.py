@@ -134,15 +134,26 @@ def get_session():
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
+
+# 增加与room类有关逻辑
+
 # 数据库中编写入住数据，请在执行之前进行相应数据合法性检测
 def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
     final_data = []
     for person in check_in_data.people:
-        print(person, 1)
+        print(1, person)
         hotel_check = HotelCheck()
         hotel_check.guest_name = person[0]
         hotel_check.person_id = person[1]
         hotel_check.room_id = check_in_data.room_id
+        hotel_check.check_in_date = datetime.now()
+        # 将 HotelCheck 和 Room 对象关联
+        room = session.exec(select(Room).where(Room.room_id == check_in_data.room_id)).first()
+        if room:
+            hotel_check.room = room  # 设置房间关系
+            room.state = True  # 更新房间状态为已入住
+            room.hotel_checks.append(hotel_check)  # 更新房间的入住记录
+        
         final_data.append(hotel_check)
     session.add_all(final_data)
     session.commit()
