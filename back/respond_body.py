@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from front.request_body import Person
 
@@ -141,13 +141,40 @@ class WeeklyPeopleLogRespond(BaseModel):
     data: Optional[PeopleLog]
     
 
-   
 class RoomStatusRespond(BaseModel):
     code: int
     message: str
     data: Optional[RoomStatus]
 
-class AdjustRequest(SQLModel):
-    mode: int  # 空调模式，0为制冷，1为制热
-    resourceLimit: int  # 1房间分配限制，0为无限制
-    fanRates: Dict[str, float]  # 风速费率，包括低速、中速、高速
+
+class FanRate(BaseModel):
+    lowSpeedRate: float
+    midSpeedRate: float
+    highSpeedRate: float
+
+# 房间空调状态设置的请求体
+class RoomACStatusControlRequest(BaseModel):
+    roomId: int                # 房间号，类型为整型
+    power: Literal["on", "off"]               # 电源状态，例如 "on" 或 "off"
+    temperature: int           # 温度，类型为整型
+    windSpeed: Literal["低", "中", "高"]             # 风速，可能为 "低", "中", "高" 等
+    sweep: str    
+    
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+    
+class Person(BaseModel):
+    peopleId: int
+    peopleName: str
+    
+    
+class CenterAcControlRequest(BaseModel):
+    mode: int
+    resourceLimit: int
+    fanRate: Optional[FanRate]
+    
+
+
+
+

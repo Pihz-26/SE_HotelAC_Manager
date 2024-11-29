@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 
 async def control_ac_core(
-    adjust_request: AdjustRequest,  # 请求数据
+    adjust_request: CenterAcControlRequest,  # 请求数据
     session: SessionDep   # 获取数据库 session
 ):
     # 验证空调模式是否正确
@@ -38,6 +38,44 @@ async def control_ac_core(
     ac_param.high_cost_rate = fanRates["highSpeedRate"]
     session.add(ac_param)
     session.commit()
-
     # 返回成功响应
     return JSONResponse(content={"code": 0, "message": "Central air conditioning settings updated successfully."})
+
+
+async def get_ac_states_core(session: SessionDep) -> Dict:
+    # 查询所有房间信息
+    rooms = session.exec(select(Room)).all()
+
+    # 生成空调状态列表
+    ac_states = []
+    for room in rooms:
+        # 获取该房间的空调日志
+        ac_log = session.exec(select(acLog).where(acLog.room_id == room.room_id).order_by(acLog.change_time.desc())).first()
+        # 获取空调控制信息
+        ac_control = session.exec(select(acControl).order_by(acControl.record_time.desc())).first()
+        # 如果没有空调日志或控制信息，跳过此房间
+        if not ac_log or not ac_control:
+            continue
+
+        # 构建每个房间的空调状态数据
+        room_state = {
+            "roomId": room.room_id,
+            "roomTemperature": room.roomTemperature,
+            "power": room.power,
+            "temperature": ac_log.temperature,
+            "windSpeed": WindLevel(room.wind_level),  
+            "mode": ACModel(ac_control.ac_model),  
+            "sweep": room.sweep,  # 扫风状态
+            "cost": room.cost,  # 当前房间空调费用
+            "totalCost": room.totalCost,  # 累计费用
+            "status": room.status,  # 状态字段，表示空调调度状态
+            "timeSlice": 3  # 表示分配的时间片长度
+            }
+        ac_states.append(room_state)
+                     
+    # 返回空调状态列表
+    return {
+        "code": 0,
+        "message": "查询成功",
+        "data": ac_states
+    }
