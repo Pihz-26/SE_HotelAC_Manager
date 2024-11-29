@@ -138,6 +138,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
     final_data = []
     for person in check_in_data.people:
+        print(person, 1)
         hotel_check = HotelCheck()
         hotel_check.guest_name = person[0]
         hotel_check.person_id = person[1]
@@ -145,6 +146,7 @@ def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
         final_data.append(hotel_check)
     session.add_all(final_data)
     session.commit()
+    
 
 # 数据库中编写入住数据，请在执行之前进行相应数据合法性检测
 def data_room(room_data:Room, session: SessionDep):
@@ -240,7 +242,14 @@ def init_rooms(session):
         rooms.append(Room(room_id=f"500{i+1}", room_level=RoomLevel.Queen, state=False))
 
     # 将房间数据添加到数据库
-    session.add_all(rooms)
-    session.commit()
-    print("40个房间数据已成功初始化")
+    try:
+        session.add_all(rooms)
+        session.commit()  # 提交到数据库
+        print("40个房间数据已成功初始化")
+    except IntegrityError:
+        session.rollback()  # 如果已存在房间数据，回滚操作
+        print("房间数据已经存在")
+    
+
+    
 

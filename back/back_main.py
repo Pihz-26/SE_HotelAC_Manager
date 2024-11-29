@@ -16,10 +16,10 @@ app = FastAPI(lifespan=lifespan)
 
 
 #添加房间
-@app.post("/add-room/")
-async def add_room(room_data: Room, session: SessionDep):
-    data_room(room_data, session)
-    return {"message": f"Room {room_data.room_id} added successfully!"}
+# @app.post("/add-room/")
+# async def add_room(room_data: Room, session: SessionDep):
+#     data_room(room_data, session)
+#     return {"message": f"Room {room_data.room_id} added successfully!"}
 
 # 控制指定房间的空调设置
 @app.get("/aircon/control")
