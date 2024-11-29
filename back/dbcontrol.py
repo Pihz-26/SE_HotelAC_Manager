@@ -76,9 +76,9 @@ class acControl(SQLModel, table=True):
        
        
 class User(SQLModel, table=True):
-    user_id: int = Field(default=None, primary_key=True)
-    password: str
-    role: str
+    user_id: str = Field(default=None, primary_key=True)
+    password: str = Field(default='123')
+    role: str = Field(default='admin')
 
 
 class RoomCheckIn(): 
@@ -181,42 +181,21 @@ def updateAcControl(ac_model: ACModel, temperature: int):
     ac_control.ac_model = ac_model
     ac_control.temperature = temperature
     
-# 验证用户密码（不加密）
-def verify_user_password(user_id: str, password: str, session: Session):
-    statement = select(User).where(User.user_id == user_id)
-    user = session.exec(statement).first()
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    
-    # 直接比较明文密码
-    if password != user.password:
-        raise HTTPException(status_code=401, detail="密码错误")
-    
-    return user
 
 
-def create_predefined_users():
-    predefined_users = [
-        {"user_id": "admin", "password": "admin123", "role": "admin"},
-        {"user_id": "manager", "password": "manager123", "role": "manager"},
-        {"user_id": "guest", "password": "guest123", "role": "guest"}
-    ]
+def create_predefined_users(session: SessionDep):
+    user = User(user_id = "admin", password = "admin123", role = "admin")
 
-    with Session(engine) as session:
-        for user_data in predefined_users:
-            user = User(
-                user_id=user_data["user_id"],
-                password=user_data["password"],  # 明文存储密码
-                role=user_data["role"]
-            )
+    try:
+        session.add(user)
+        session.commit()  # 提交到数据库
+    except IntegrityError:
+        session.rollback()  # 如果已存在用户，回滚操作
+        print(f"User {user.user_id} already exists.")
 
-            try:
-                session.add(user)
-                session.commit()  # 提交到数据库
-            except IntegrityError:
-                session.rollback()  # 如果已存在用户，回滚操作
-                print(f"User {user_data['user_id']} already exists.")
-                
-create_db_and_tables()            
-create_predefined_users()  # 插入预定义用户
+    statement = select(User)
+    results = session.exec(statement)
+    print('\n')
+    for user in results:
+        print(user,'\n\n')
+

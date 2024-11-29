@@ -23,7 +23,7 @@ async def decode_jwt(token: str):
         raise HTTPException(status_code=401, detail="认证失败")
 
 # 系统校验管理员权限（在后续接口中使用）
-async def check_admin(authorization: str):
+async def check_admin(session: SessionDep, authorization: str):
     if not authorization:
         raise HTTPException(status_code=401, detail="认证失败")
     

@@ -1,7 +1,10 @@
-from dbcontrol import *
 from respond_body import *
+from dbcontrol import *
+from sqlmodel import Field, Session, SQLModel, Relationship, ForeignKey, create_engine, select 
 from datetime import datetime, timezone, timedelta
 import jwt
+
+
 
 # 预定义的密钥和算法
 SECRET_KEY = 'your-secret-key'
@@ -19,39 +22,44 @@ async def create_jwt_token(user_id: str, role: str) -> str:
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token
 
-def get_user(session: Session, user_id: str):
-    result = session.exec(select(User).where(User.user_id == user_id))
-    print(result)
-    return result.scalars().first()  # 返回第一个匹配的用户对象
-
 # 登录时获取用户角色（验证账号密码后发放JWT）
-async def admin_login_core(data: dict):
+async def admin_login_core(data: AdminLoginRequest, session: SessionDep):
     # 处理请求体中的账号密码数据
-    user_id = data.get("username")
-    password = data.get("password")
-    print(user_id, password)
-    with Session(engine) as session:
-        # 执行异步查询
-        user = get_user(session, user_id)
-        print(f"User data: {user}")  # 调试输出，检查返回的数据类型
-        if not user or user.password != password:
-            raise HTTPException(status_code=401, detail="用户名或密码错误")
-        
-        # 从数据库中获取用户角色
-        role = user.role
-        # 创建JWT Token
-        token = create_jwt_token(user_id, role)
-        
-        # 返回响应
-        return {
-            "code": 0,
-            "message": "登录成功",
-            "token": token,
-            "role": role
-        }
+    print(data)
+    user = User()
+    user.user_id = data.username
+    user.password = data.password
+    user.role = 'admin'
+    print(user)
+    try:
+        session.add(user)
+        session.commit()  # 提交到数据库
+    except IntegrityError:
+        print("problem")
+        session.rollback()  # 如果已存在用户，回滚操作
+        print(f"User {user.user_id} already exists.")
+
+    user = session.exec(select(User).where(User.user_id == data.username))
+    
+    print(user)
+    if not user or user.password != user.password:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    
+    # 从数据库中获取用户角色
+    role = user.role
+    # 创建JWT Token
+    token = create_jwt_token(user.user_id, role)
+    
+    # 返回响应
+    return {
+        "code": 0,
+        "message": "登录成功",
+        "token": token,
+        "role": role
+    }
        
 # 前台获取入住情况（查询所有房间的入住信息）
-async def room_state_core(authorization: dict):
+async def room_state_core(session: SessionDep, authorization: dict):
     # 验证管理员身份
     
     # 通过 SQLModel 查询数据库中所有的房间数据
@@ -91,7 +99,7 @@ async def room_state_core(authorization: dict):
         return response
 
 # 前台办理入住（向指定房间添加新的顾客）
-async def chect_in_core(authorization: dict, data: dict):    
+async def chect_in_core(session: SessionDep, authorization: dict, data: dict):    
     # 验证管理员身份
     
     # 处理请求体中的房间号顾客名数据
@@ -122,7 +130,7 @@ async def chect_in_core(authorization: dict, data: dict):
         
 
 # 前台办理结账/退房（生成账单并更新房间状态）
-async def check_out_core(authorization: dict, data: dict):
+async def check_out_core(session: SessionDep, authorization: dict, data: dict):
     # 验证管理员身份
     
     # 处理请求体中的房间号数据
@@ -176,7 +184,7 @@ async def check_out_core(authorization: dict, data: dict):
         }
 
 # 前台开具详单（查询指定房间的全部信息）
-async def print_record_core(authorization: dict, data: dict):
+async def print_record_core(session: SessionDep, authorization: dict, data: dict):
     pass
     # 验证管理员身份
     
