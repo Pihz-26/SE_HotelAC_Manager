@@ -1,16 +1,14 @@
-from typing import Annotated
-from typing import Union, List, Optional
+from typing import Annotated, Union, List, Optional
 from enum import Enum
-
-
 from fastapi import Depends, FastAPI, HTTPException, Query
-from sqlmodel import Field, Session, SQLModel, Relationship, ForeignKey, create_engine, select
+from sqlmodel import Field, Session, SQLModel, Relationship, ForeignKey, create_engine, select, Field
 from datetime import datetime
-
+from sqlalchemy.exc import IntegrityError
 '''
 此处文件主要用于更新数据库中的数据，对数据库中的数据进行相应的查询操作，同时返回
 整个过程中按照一定思路给出了不同应答情况的返回数据
 '''
+
 
 
 class RoomLevel(str, Enum):
@@ -29,14 +27,14 @@ class ACModel(int, Enum):
 
 # 房间数据表    
 class Room(SQLModel, table=True):
-    room_id: str   =  Field(index=True, description="Room number", primary_key=True)
+    room_id: str =  Field(index=True, description="Room number", primary_key=True)
     room_level: RoomLevel = Field(default = RoomLevel.Standard, description="Room level")
     state: bool = Field(default=False, description="whether the room have been checked in")
     temperature: int = Field(default=None, description="The current temperature of the room")
     
     # 当前房间中空调的状态，其中包括当前花费
     cost: int = Field(default = 0, description="AC cost in the room")
-    # 、风速、是否开启扫风、是否开机
+    # 风速、是否开启扫风、是否开机
     wind_level: WindLevel = Field(default=WindLevel.Low, description="AC's wind level")
     sweep: bool = Field(default=False, description="Launch sweep mode or not")
     power: bool = Field(default=False, description="Whether the AC has been launched or not")
@@ -69,19 +67,20 @@ class acLog(SQLModel, table=True):
     wind_level: WindLevel = Field(default=WindLevel.Low, description="AC's wind level")
     sweep: bool = Field(default=False, description="Launch sweep mode or not")
 
+
 # 中央空调控制表，按照需求应该只用调节温度和模式
 class acControl(SQLModel, table=True):
-    record_time: datetime = Field(default_factory=datetime.now,  primary_key=True, description="the time of changing AC") 
+    record_time: datetime = Field(default_factory=datetime.now,  primary_key=True, description="the time of changing AC")
     ac_model: ACModel = Field(default=ACModel.Cold)
     temperature: int = Field(default=26)
        
        
 class User(SQLModel, table=True):
-    user_id: str = Field(default="123")
-    password: str = Field(default="123")
-    role: str = Field(default="管理员")
+    user_id: int = Field(default=None, primary_key=True)
+    password: str
+    role: str
 
-  
+
 class RoomCheckIn(): 
     '''
     类中应该传入两个数据，分别为房间号和入住人数据，入住人数据用(name, id)的元组来储存
@@ -89,6 +88,7 @@ class RoomCheckIn():
     def __init__(self, room_id:str, people: List[tuple]):
         self.room_id:str = room_id
         self.people:List = people
+
 
 class RoomAcData():
     '''
@@ -101,6 +101,7 @@ class RoomAcData():
         self.model = model
         self.temperature = temperature       
 
+
 app =FastAPI()
 
 sqlite_file_name = "database.db"
@@ -109,9 +110,9 @@ sqlite_url = f"sqlite:///{sqlite_file_name}"
 connect_args = {"check_same_thread": False}
 engine = create_engine(sqlite_url, connect_args=connect_args)
 
-
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    
 
 def get_session():
     with Session(engine) as session:
@@ -131,13 +132,13 @@ def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
     session.add_all(final_data)
     session.commit()
 
-
 # 数据库中进行退房数据更改，请在执行前进行相应数据的合法性检测
 def data_check_out(room_id: str, session: SessionDep):  
     # 寻在出住房数据中房间号相同，入住日期存在，退房日期不存在的数据
     statement = select(HotelCheck).where(
         HotelCheck.room_id == room_id,
-        HotelCheck.check_in_date != None,  # check_out_date 不为 None
+        # HotelCheck.check_in_date != None,
+        # 确保是未退房的记录
         HotelCheck.check_out_date == None 
     )
     results = session.exec(statement)
@@ -173,7 +174,7 @@ def updateRoomAcData(room_id:str, cost:int, room_ac_data:RoomAcData, session: Se
         room.wind_level = room_ac_data.wind_level
         room.sweep = room_ac_data.sweep
         room.power = room_ac_data.power
-        
+       
 # 更改空调状态控制表
 def updateAcControl(ac_model: ACModel, temperature: int):
     ac_control =  acControl()
@@ -194,3 +195,28 @@ def verify_user_password(user_id: str, password: str, session: Session):
     
     return user
 
+
+def create_predefined_users():
+    predefined_users = [
+        {"user_id": "admin", "password": "admin123", "role": "admin"},
+        {"user_id": "manager", "password": "manager123", "role": "manager"},
+        {"user_id": "guest", "password": "guest123", "role": "guest"}
+    ]
+
+    with Session(engine) as session:
+        for user_data in predefined_users:
+            user = User(
+                user_id=user_data["user_id"],
+                password=user_data["password"],  # 明文存储密码
+                role=user_data["role"]
+            )
+
+            try:
+                session.add(user)
+                session.commit()  # 提交到数据库
+            except IntegrityError:
+                session.rollback()  # 如果已存在用户，回滚操作
+                print(f"User {user_data['user_id']} already exists.")
+                
+create_db_and_tables()            
+create_predefined_users()  # 插入预定义用户

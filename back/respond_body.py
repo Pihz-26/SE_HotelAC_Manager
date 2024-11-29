@@ -1,7 +1,12 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
-class RoomACControlRespond(BaseModel):
+class People(BaseModel):
+    peopleId: int
+    peopleName: str
+
+class NormalRespond(BaseModel):
     code: int
     message: str
     
@@ -16,6 +21,74 @@ class RoomACData(BaseModel):
     cost: float
     totalCost: float
     
+
+
+      
+class CheckInState(BaseModel):
+    roodId: int
+    roomLevel: str
+    cost: int
+    checkInTime: datetime
+    people: Optional[People]
+ 
+class AcLogRecord(BaseModel):
+    time: datetime
+    cost: float
+    power: str
+    temperature: int
+    windSpeed: str
+    mode: str
+    sweep: str
+    
+
+class RoomRecords(BaseModel):
+    cost: int
+    people: Optional[People]
+    records: Optional[AcLogRecord] 
+  
+class RoomAcStatus(BaseModel):
+    roomId: int
+    roomTemperature: int
+    power: str
+    temperature: int
+    windSpeed: str
+    mode: str
+    sweep: str
+    cost: float
+    totalCost: float
+    status: int
+    timeSlice: int 
+  
+class AcControlLog(BaseModel):
+    roomId: int
+    time: datetime
+    cost: float
+    energyCost: float
+    power: str
+    temperature: int
+    windSpeed: str
+    mode:   str
+    sweep: str
+    status: str
+    timeSlice: int
+    
+class AcScheduleLog(BaseModel):
+    time: datetime
+    waitQueue: Optional[int]
+    runningQueue: Optional[int] 
+    
+class RoomStatus(BaseModel):
+    roomId: int
+    roomLevel: str
+    people: Optional[People]
+    cost: int
+    roomTemperature: int
+    power: str
+    temperature: int
+    windSpeed: str
+    mode: str
+    sweep: str
+  
 class RoomACStateRespond(BaseModel):
     code: int
     message: str 
@@ -39,7 +112,7 @@ class PeopleLog(BaseModel):
 
 
     
-class  DetailsRespond(BaseModel):
+class DetailsRespond(BaseModel):
     code: int
     checkInTime: datetime
     message: str
@@ -78,8 +151,3 @@ class RoomStatusRespond(BaseModel):
     message: str
     data: Optional[RoomStatus]
     
-
-# 登录请求数据模型
-class LoginRequest(BaseModel):
-    user_id: str
-    password: str
