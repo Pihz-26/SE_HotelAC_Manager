@@ -26,22 +26,29 @@ class ACModel(int, Enum):
     Cold= 0
     Warm= 1
 
+class Status(int,Enum):
+    waiting=0
+    runing=1
+    noschedule =2
 
 # 房间数据表    
 class Room(SQLModel, table=True):
     room_id: str   =  Field(index=True, description="Room number", primary_key=True)
     room_level: RoomLevel = Field(default = RoomLevel.Standard, description="Room level")
     state: bool = Field(default=False, description="whether the room have been checked in")
-    temperature: int = Field(default=None, description="The current temperature of the room")
-    
+    roomTemperature: float = Field(default=26, description="The current temperature of the room")
+    environTemperature: float = Field(default=26, description="The environment temperature of the room")
     # 当前房间中空调的状态，其中包括当前花费
-    cost: int = Field(default = 0, description="AC cost in the room")
+    cost: float = Field(default = 0, description="current AC cost in the room")
+    totalCost:float =Field(default = 0, description=" totalCost in the room")
     # 、风速、是否开启扫风、是否开机
     wind_level: WindLevel = Field(default=WindLevel.Low, description="AC's wind level")
-    sweep: bool = Field(default=False, description="Launch sweep mode or not")
+    sweep: bool = Field(default=False, description="Launch sweep mode or not");
     power: bool = Field(default=False, description="Whether the AC has been launched or not")
     # 定义与 HotelCheck 的关系
     hotel_checks: List["HotelCheck"] = Relationship(back_populates="room")
+    status:Status = Field(default=Status.noschedule, description="AC schedule status")
+    
     
     
 # 酒店入住情况记录表, 将
@@ -59,10 +66,10 @@ class HotelCheck(SQLModel, table=True):
 class acLog(SQLModel, table=True):
     room_id: str = Field(index=True, primary_key=True, foreign_key="room.room_id",description="Room number")
     
-    # 空调模式和温度设置，此处的内容应该从acControl中获取
+    # 空调模式和温度设置
     ac_model: ACModel = Field(default=ACModel.Cold)
     temperature: int = Field(default=26)
-    
+
     change_time: datetime = Field(default_factory=datetime.now,  primary_key=True, description="the time of changing AC state") 
     
     power:bool = Field(default=False, description="Whether the AC has been launched or not")
@@ -74,7 +81,13 @@ class acControl(SQLModel, table=True):
     record_time: datetime = Field(default_factory=datetime.now,  primary_key=True, description="the time of changing AC") 
     ac_model: ACModel = Field(default=ACModel.Cold)
     temperature: int = Field(default=26)
-       
+
+class acPamater(SQLModel, table=True):
+    precept: int = Field(default=1, primary_key=True)
+    low_cost_rate: float = Field(default=0.5)
+    middle_cost_rate: float = Field(default=1.0)
+    high_cost_rate: float = Field(default=2.0)
+
        
 class User(SQLModel, table=True):
     user_id: str = Field(default="123")
@@ -168,7 +181,6 @@ def updateRoomAcData(room_id:str, cost:int, room_ac_data:RoomAcData, session: Se
     result = session.exec(statement)
     for room in result:
         room.cost = cost
-        
         room.wind_level = room_ac_data.wind_level
         room.sweep = room_ac_data.sweep
         room.power = room_ac_data.power
