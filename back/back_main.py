@@ -3,7 +3,6 @@ from dbcontrol import Room, HotelCheck, acLog, acControl, RoomCheckIn, RoomAcDat
 from dbcontrol import engine, SessionDep, create_db_and_tables, data_check_in, data_check_out
 from sqlmodel import Field, Session, SQLModel, Relationship, ForeignKey, create_engine, select
 from core import *
-from dbcontrol import SessionDep
 from respond_body import *
 
 

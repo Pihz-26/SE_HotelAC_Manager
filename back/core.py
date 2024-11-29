@@ -1,9 +1,8 @@
 from respond_body import *
 from dbcontrol import *
 from sqlmodel import Field, Session, SQLModel, Relationship, ForeignKey, create_engine, select 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import jwt
-
 
 
 # 预定义的密钥和算法
@@ -13,7 +12,7 @@ ALGORITHM = 'HS256'
 # 签发JWT token
 async def create_jwt_token(user_id: str, role: str) -> str:
     # 设置JWT过期时间为1小时
-    expiration = timezone.utc() + timedelta(hours=1)  
+    expiration = datetime.now() + timedelta(hours=1)  
     payload = {
         "user_id": user_id,
         "role": role,
@@ -26,29 +25,16 @@ async def create_jwt_token(user_id: str, role: str) -> str:
 async def admin_login_core(data: AdminLoginRequest, session: SessionDep):
     # 处理请求体中的账号密码数据
     print(data)
-    user = User()
-    user.user_id = data.username
-    user.password = data.password
-    user.role = 'admin'
-    print(user)
-    try:
-        session.add(user)
-        session.commit()  # 提交到数据库
-    except IntegrityError:
-        print("problem")
-        session.rollback()  # 如果已存在用户，回滚操作
-        print(f"User {user.user_id} already exists.")
-
-    user = session.exec(select(User).where(User.user_id == data.username))
-    
-    print(user)
-    if not user or user.password != user.password:
+    users = session.exec(select(User).where(User.user_id == data.username)).all()
+    print(users)
+    user = users[0]
+    if not user or user.password != data.password:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     
     # 从数据库中获取用户角色
     role = user.role
     # 创建JWT Token
-    token = create_jwt_token(user.user_id, role)
+    token = await create_jwt_token(user.user_id, role)
     
     # 返回响应
     return {
