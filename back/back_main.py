@@ -57,7 +57,7 @@ async def control_ac(
 
 # 管理员实时获取酒店所有房间空调的运行状态和参数信息。
 @app.get("/aircon/status")
-async def get_ac_states(session: Session = SessionDep):
+async def get_ac_states(session: SessionDep):
     """
     管理员获取整个酒店空调的运行状态和参数信息。
     调用核心函数获取空调状态数据并返回。

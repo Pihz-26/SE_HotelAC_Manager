@@ -90,7 +90,7 @@ class acPamater(SQLModel, table=True):
 
        
 class User(SQLModel, table=True):
-    user_id: str = Field(default="123")
+    user_id: str = Field(default="123", primary_key=True)
     password: str = Field(default="123")
 
   
