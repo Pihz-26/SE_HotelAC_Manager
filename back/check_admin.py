@@ -2,11 +2,11 @@ from fastapi import HTTPException
 import jwt
 
 # 预定义的密钥和算法
-SECRET_KEY = 'your-secret-key'
+SECRET_KEY = '我爱软件工程'
 ALGORITHM = 'HS256'
 
 # 解码JWT并提取用户角色
-async def decode_jwt(token: str):
+def decode_jwt(token: str):
     try:
         # 解码并验证JWT
         decoded = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -23,7 +23,7 @@ async def decode_jwt(token: str):
         raise HTTPException(status_code=401, detail="认证失败")
 
 # 系统校验管理员权限（在后续接口中使用）
-async def check_admin(session: SessionDep, authorization: str):
+def check_admin(authorization: str):
     if not authorization:
         raise HTTPException(status_code=401, detail="认证失败")
     
@@ -35,11 +35,11 @@ async def check_admin(session: SessionDep, authorization: str):
         user_role = decode_jwt(token)  # await
 
         # 如果用户角色不是管理员
-        if user_role != "管理员":
+        if user_role not in ["前台服务", "空调管理", "酒店经理"]:
             raise HTTPException(status_code=403, detail="权限不足")
         
         # 如果是管理员
-        return {"message": "身份验证成功"}
+        return 1
     
     except HTTPException as e:
         # 捕获并重新抛出HTTPException

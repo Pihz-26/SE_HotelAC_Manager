@@ -1,23 +1,41 @@
 from fastapi import FastAPI, Header, Body
-from dbcontrol import Room, HotelCheck, acLog, acControl, RoomCheckIn, RoomAcData
-from dbcontrol import engine, SessionDep, create_db_and_tables, data_check_in, data_check_out
-from sqlmodel import Field, Session, SQLModel, Relationship, ForeignKey, create_engine, select
+from dbcontrol import Room, SessionDep, create_db_and_tables
+from contextlib import asynccontextmanager
 from core import *
 from respond_body import *
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 在应用启动时执行数据库初始化操作
+    with Session(engine) as session:
+        create_db_and_tables(session)
+    yield
+    
+app = FastAPI(lifespan=lifespan)
 
-app = FastAPI()
-create_db_and_tables()
+
+
+#添加房间
+@app.post("/add-room/")
+async def add_room(room_data: Room, session: SessionDep):
+    data_room(room_data, session)
+    return {"message": f"Room {room_data.room_id} added successfully!"}
 
 # 控制指定房间的空调设置
 @app.get("/aircon/control")
-async def room_ac_control():
-    pass
+async def room_ac_control(
+    request: RoomACStatusControlRequest,  # 请求体
+    session: SessionDep  # 获取数据库 sessionDep
+):
+    # 调用核心函数
+    return await room_ac_control_core(request, session)
 
 # 查询指定房间的空调控制面板信息
 @app.get("/aircon/panel")
-async def room_ac_state():
-    pass
+async def room_ac_state(roomId: int, session: SessionDep):
+    # 调用核心函数获取指定房间的空调状态
+    data = room_ac_state_core(roomId, session)
+    return {"code": 0, "message": "操作成功", "data": data}
 
 # 登录时获取用户角色（验证账号密码后发放JWT）
 @app.get("/admin/login")
@@ -34,7 +52,7 @@ async def room_state(session: SessionDep, authorization: str = Header(...)):
 # 前台办理入住（向指定房间添加新的顾客）
 @app.get("/stage/add") 
 async def check_in(session: SessionDep, authorization: str = Header(...), data: dict = Body(...)):
-    return await chect_in_core(session, authorization, data)
+    return await check_in_core(session, authorization, data)
     
 
 # 前台办理结账/退房（生成账单并更新房间状态）
@@ -51,13 +69,22 @@ async def print_record(session: SessionDep, authorization: str = Header(...), da
 
 # 管理员调整中央空调的全局设置，包括工作模式、温度范围和风速费率。
 @app.get("/central-aircon/adjust")
-async def control_ac():
-    pass
+async def control_ac(
+    adjust_request:CenterAcControlRequest,  # 请求数据
+    session: SessionDep # 获取数据库 session
+):
+    # 调用core.py中的control_ac_core函数
+    return await control_ac_core(adjust_request, session)
 
 # 管理员实时获取酒店所有房间空调的运行状态和参数信息。
 @app.get("/aircon/status")
-async def get_ac_states():
-    pass
+async def get_ac_states(session: SessionDep):
+    """
+    管理员获取整个酒店空调的运行状态和参数信息。
+    调用核心函数获取空调状态数据并返回。
+    """
+    result = await get_ac_states_core(session)
+    return result
 
 # 获取空调最近一周的操作记录
 @app.get("/admin/query_ac")
