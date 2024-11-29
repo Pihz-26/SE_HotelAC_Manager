@@ -1,8 +1,11 @@
 from pydantic import BaseModel
 from typing import Optional, Literal
 from datetime import datetime
-from front.request_body import Person
 
+class Person(BaseModel):
+    peopleId: int
+    peopleName: str
+    
 class NormalRespond(BaseModel):
     code: int
     message: str
@@ -164,15 +167,13 @@ class AdminLoginRequest(BaseModel):
     username: str
     password: str
     
-class Person(BaseModel):
-    peopleId: int
-    peopleName: str
+
     
     
 class CenterAcControlRequest(BaseModel):
     mode: int
     resourceLimit: int
-    fanRate: Optional[FanRate]
+    fanRates: Optional[FanRate]
     
 
 

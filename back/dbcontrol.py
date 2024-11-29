@@ -36,17 +36,19 @@ class Room(SQLModel, table=True):
     room_id: str   =  Field(index=True, description="Room number", primary_key=True)
     room_level: RoomLevel = Field(default = RoomLevel.Standard, description="Room level")
     state: bool = Field(default=False, description="whether the room have been checked in")
-    roomTemperature: int = Field(default=26, description="The current temperature of the room")
+    roomTemperature: float = Field(default=26, description="The current temperature of the room")
+    environTemperature: float = Field(default=26, description="The environment temperature of the room")
     # 当前房间中空调的状态，其中包括当前花费
-    cost: int = Field(default = 0, description="current AC cost in the room")
-    totalCost:int =Field(default = 0, description=" totalCost in the room")
+    cost: float = Field(default = 0, description="current AC cost in the room")
+    totalCost:float =Field(default = 0, description=" totalCost in the room")
     # 、风速、是否开启扫风、是否开机
     wind_level: WindLevel = Field(default=WindLevel.Low, description="AC's wind level")
-    sweep: bool = Field(default=False, description="Launch sweep mode or not")
+    sweep: bool = Field(default=False, description="Launch sweep mode or not");
     power: bool = Field(default=False, description="Whether the AC has been launched or not")
     # 定义与 HotelCheck 的关系
     hotel_checks: List["HotelCheck"] = Relationship(back_populates="room")
     status:Status = Field(default=Status.noschedule, description="AC schedule status")
+    
     
     
 # 酒店入住情况记录表, 将
@@ -88,7 +90,7 @@ class acPamater(SQLModel, table=True):
 
        
 class User(SQLModel, table=True):
-    user_id: str = Field(default="123")
+    user_id: str = Field(default="123", primary_key=True)
     password: str = Field(default="123")
 
   
@@ -141,6 +143,10 @@ def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
     session.add_all(final_data)
     session.commit()
 
+# 数据库中编写入住数据，请在执行之前进行相应数据合法性检测
+def data_room(room_data:Room, session: SessionDep):
+    session.add(room_data)
+    session.commit()
 
 # 数据库中进行退房数据更改，请在执行前进行相应数据的合法性检测
 def data_check_out(room_id: str, session: SessionDep):  
@@ -155,7 +161,7 @@ def data_check_out(room_id: str, session: SessionDep):
     current_time = datetime.now()
     for hotel_check in results:
         hotel_check.check_out_date = current_time
-        
+       
     session.commit()
 
 # 空调控制记录

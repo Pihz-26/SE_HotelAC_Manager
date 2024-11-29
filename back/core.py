@@ -21,7 +21,7 @@ async def control_ac_core(
     
     # 验证风速费率
     fanRates = adjust_request.fanRates
-    if "lowSpeedRate" not in fanRates or "midSpeedRate" not in fanRates or "highSpeedRate" not in fanRates:
+    if adjust_request.fanRates is None or adjust_request.fanRates.lowSpeedRate is None or adjust_request.fanRates.midSpeedRate is None or adjust_request.fanRates.highSpeedRate is None:
         raise HTTPException(status_code=400, detail="Fan speed rates (low, mid, high) must be provided.")
 
     # 更新空调控制表
@@ -33,9 +33,9 @@ async def control_ac_core(
     ac_param = session.exec(select(acPamater).where(acPamater.precept == 1)).first()  # 获取当前风速费率设置
     if not ac_param:
         ac_param = acPamater()  # 如果没有记录，创建新的
-    ac_param.low_cost_rate = fanRates["lowSpeedRate"]
-    ac_param.middle_cost_rate = fanRates["midSpeedRate"]
-    ac_param.high_cost_rate = fanRates["highSpeedRate"]
+    ac_param.low_cost_rate = fanRates.lowSpeedRate
+    ac_param.middle_cost_rate = fanRates.midSpeedRate
+    ac_param.high_cost_rate = fanRates.highSpeedRate
     session.add(ac_param)
     session.commit()
     # 返回成功响应
