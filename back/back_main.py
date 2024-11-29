@@ -6,13 +6,20 @@ app = FastAPI()
 
 # 控制指定房间的空调设置
 @app.get("/aircon/control")
-async def room_ac_control():
-    pass
+async def room_ac_control(
+    request: RoomACStatusControlRequest,  # 请求体
+    session: SessionDep  # 获取数据库 sessionDep
+):
+    # 调用核心函数
+    return await room_ac_control_core(request, session)
 
 # 查询指定房间的空调控制面板信息
 @app.get("/aircon/panel")
-async def room_ac_state():
-    pass
+async def room_ac_state(roomId: int, session: SessionDep):
+    # 调用核心函数获取指定房间的空调状态
+    data = room_ac_state_core(roomId, session)
+    return {"code": 0, "message": "操作成功", "data": data}
+   
 
 # 管理员登录，通过验证账号和密码后，发放JWT并提供管理员的身份信息供后续请求使用。
 @app.get("/admin/login")

@@ -79,3 +79,73 @@ async def get_ac_states_core(session: SessionDep) -> Dict:
         "message": "查询成功",
         "data": ac_states
     }
+
+
+async def room_ac_control_core(
+    request: RoomACStatusControlRequest,  # 请求体作为参数传递
+    session: SessionDep  # 数据库 session
+):
+    # 检查房间是否存在
+    room = session.get(Room, str(request.roomId))
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # 转换power, windSpeed, sweep为对应值
+    power_status = True if request.power == 'on' else False
+    wind_speed_map = {"低": WindLevel.Low, "中": WindLevel.Medium, "高": WindLevel.High}
+    sweep_status = True if request.sweep == '开' else False
+
+    if request.windSpeed not in wind_speed_map:
+        raise HTTPException(status_code=400, detail="Invalid wind speed value. Must be '低', '中', or '高'.")
+    
+    # 更新房间的空调状态
+    room.power = power_status
+    room.wind_level = wind_speed_map[request.windSpeed]
+    room.sweep = sweep_status
+    session.add(room)
+    session.commit()
+
+    # 记录空调操作日志
+    ac_log = acLog(
+        room_id=str(request.roomId),
+        power=power_status,
+        temperature=request.temperature,
+        wind_level=wind_speed_map[request.windSpeed],
+        sweep=sweep_status
+    )
+    session.add(ac_log)
+    session.commit()
+
+    return {"code": 0, "message": "空调设置已更新"}
+
+
+#查询指定房间的空调控制面板信息
+def room_ac_state_core(room_id: int, session: Session) -> Dict:
+    # 获取房间的当前空调控制面板信息
+    room = session.exec(select(Room).where(Room.room_id == str(room_id))).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # 获取空调的最新记录（acLog）
+    ac_log = session.exec(select(acLog).where(acLog.room_id == str(room_id)).order_by(acLog.change_time.desc())).first()
+    if not ac_log:
+        raise HTTPException(status_code=404, detail="No AC log found for this room")
+
+    # 获取空调控制的全局设置（acControl）
+    ac_control = session.exec(select(acControl).order_by(acControl.record_time.desc())).first()
+    if not ac_control:
+        raise HTTPException(status_code=404, detail="No AC control settings found")
+
+    # 格式化返回数据
+    response_data = {
+        "roomTemperature": room.roomTemperature ,  # 默认室温为26度
+        "power": "on" if ac_log.power else "off",
+        "temperature": ac_log.temperature,         #目标温度
+        "windSpeed": WindLevel(room.wind_level),  # 风速
+        "mode": ACModel(ac_control.ac_model),  # 空调模式
+        "sweep": "开" if room.sweep else "关",
+        "cost": room.cost,  # 当前费用
+        "totalCost": room.totalCost #累计费用
+    }
+    
+    return response_data

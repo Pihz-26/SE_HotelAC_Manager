@@ -36,7 +36,7 @@ class Room(SQLModel, table=True):
     room_id: str   =  Field(index=True, description="Room number", primary_key=True)
     room_level: RoomLevel = Field(default = RoomLevel.Standard, description="Room level")
     state: bool = Field(default=False, description="whether the room have been checked in")
-    roomTemperature: int = Field(default=None, description="The current temperature of the room")
+    roomTemperature: int = Field(default=26, description="The current temperature of the room")
     # 当前房间中空调的状态，其中包括当前花费
     cost: int = Field(default = 0, description="current AC cost in the room")
     totalCost:int =Field(default = 0, description=" totalCost in the room")
