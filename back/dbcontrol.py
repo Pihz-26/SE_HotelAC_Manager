@@ -2,8 +2,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import Annotated, List, Optional
 from enum import Enum
 
-
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from sqlmodel import Field, Session, SQLModel, Relationship, create_engine, select
 from datetime import datetime
 
@@ -166,19 +165,62 @@ def data_room(room_data:Room, session: SessionDep):
     
 # 数据库中进行退房数据更改，请在执行前进行相应数据的合法性检测
 def data_check_out(room_id: str, session: SessionDep):  
-    # 寻在出住房数据中房间号相同，入住日期存在，退房日期不存在的数据
+    
+    rooms = session.exec(select(Room).where(Room.room_id == room_id)).all()
+    room = rooms[0]
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
+    
+    # 查找该房间是否有入住记录
     statement = select(HotelCheck).where(
         HotelCheck.room_id == room_id,
         HotelCheck.check_in_date != None,  # 确保是未退房的记录
         HotelCheck.check_out_date == None 
     )
-    results = session.exec(statement)
-    # 将其中的退房数据全部赋予当前值
-    current_time = datetime.now()
+    results = session.exec(statement).all()
+    print(results)
+    if not results:
+        raise HTTPException(status_code=404, detail="该房间没有入住记录")
+    data_list = []
+    # 获取当前时间
+    check_out_time = datetime.now()
     for hotel_check in results:
-        hotel_check.check_out_date = current_time
+        print(hotel_check)
+        # 获取顾客入住时间
+        check_in_time = hotel_check.check_in_date
+        # 退房操作：更新房间状态，清除顾客入住记录
+        hotel_check.check_out_date = check_out_time
+        print(check_in_time, check_out_time)
+        # 计算入住天数
+        stay_duration = (check_out_time - check_in_time).days
+        if stay_duration == 0:
+            stay_duration = 1  # 至少1天入住费用
+
+        # 计算房费（假设房费为 100 元/天）
+        room_cost = 100 * stay_duration  # 假设每晚住宿费为100元
+        print(room_cost)
+        # 查询空调消费记录
+        ac_logs = session.exec(select(acLog).where(acLog.room_id == room_id).where(acLog.change_time >= check_in_time).where(acLog.change_time <= check_out_time)).all()
+        ac_cost = sum(log.cost for log in ac_logs)  # 空调总费用计算
         
+        # 生成账单
+        total_cost = room_cost + ac_cost
+        
+        data = {
+        "roomCost": room_cost,
+        "acCost": ac_cost,
+        "totalCost": total_cost,
+        "stayDuration": stay_duration,
+        "acLogs": [{"time": log.time, "cost": log.cost} for log in ac_logs]  # 可选：空调详单
+        } 
+        data_list.append(data)
+
+    room.state = False  # 房间状态更新
     session.commit()
+
+    # 返回账单信息和结算凭据给顾客
+    return data_list[0]
+
 
 # 空调控制记录
 def updateACLog(room_id:str, room_ac_data:RoomAcData, session: SessionDep):

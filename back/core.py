@@ -51,8 +51,8 @@ async def admin_login_core(data: AdminLoginRequest, session: SessionDep):
 # 便于演示，此处暂时只展示有人房间
 async def room_state_core(session: SessionDep, authorization: str):
     # 验证管理员身份
-    # if check_admin(authorization):
-    #     print("身份验证成功！")
+    if check_admin(authorization):
+        print("身份验证成功！")
         # 通过 SQLModel 查询数据库中所有的房间数据
         room_data_list = []
         rooms = session.exec(select(Room)).all()
@@ -104,9 +104,9 @@ async def room_state_core(session: SessionDep, authorization: str):
 # 前台办理入住（向指定房间添加新的顾客）
 async def check_in_core(session: SessionDep, authorization: str, data: dict):    
     # print(authorization)
-    # # 验证管理员身份
-    # if check_admin(authorization):
-    #     print("身份验证成功！")
+    # 验证管理员身份
+    if check_admin(authorization):
+        print("身份验证成功！")
         # 处理请求体中的房间号顾客名数据
         roomId = data.get("roomId")
         roomId = f"{roomId}"
@@ -139,116 +139,74 @@ async def check_in_core(session: SessionDep, authorization: str, data: dict):
         
 
 # 前台办理结账/退房（生成账单并更新房间状态）
-async def check_out_core(session: SessionDep, authorization: str, data: dict):
+async def check_out_core(session: SessionDep, authorization: str, roomId: int):
     # 验证管理员身份
-    # if check_admin(authorization):
-    #     print("身份验证成功！")
+    if check_admin(authorization):
+        print("身份验证成功！")
         # 处理请求体中的房间号数据
-        roomId = data.get("roomId")
+        print(roomId)
+        data_check_out(roomId, session)
+        return {
+            "code": 0,
+            "message": "退房成功"
+        }
         
-        # 查询顾客入住信息
-        with Session(engine) as session:
-            # 查找该房间是否有入住记录
-            room = session.exec(select(Room).where(Room.room_id == roomId)).first()
-            if not room:
-                raise HTTPException(status_code=404, detail="房间不存在")
-            
-            guest_record = session.exec(select(HotelCheck).where(HotelCheck.room_id == roomId).where(HotelCheck.check_out_date == None)).first()
-            if not guest_record:
-                raise HTTPException(status_code=404, detail="该房间没有入住记录")
-            
-            # 获取顾客入住时间与当前时间
-            check_in_time = guest_record.check_in_date
-            check_out_time = datetime.utcnow()
-            # 计算入住天数
-            stay_duration = (check_out_time - check_in_time).days
-            if stay_duration == 0:
-                stay_duration = 1  # 至少1天入住费用
-
-            # 计算房费（假设房费为 100 元/天）
-            room_cost = 100 * stay_duration  # 假设每晚住宿费为100元
-            
-            # 查询空调消费记录
-            ac_logs = session.exec(select(AcLogRecord).where(AcLogRecord.room_id == roomId).where(AcLogRecord.time >= check_in_time).where(AcLogRecord.time <= check_out_time)).all()
-            ac_cost = sum(log.cost for log in ac_logs)  # 空调总费用计算
-            
-            # 生成账单
-            total_cost = room_cost + ac_cost
-            
-            # 退房操作：更新房间状态，清除顾客入住记录
-            guest_record.check_out_date = check_out_time
-            room.state = "空闲待清理"  # 房间状态更新
-            session.commit()
-
-            # 返回账单信息和结算凭据给顾客
-            return {
-                "code": 0,
-                "message": "退房成功",
-                "data": {
-                    "roomCost": room_cost,
-                    "acCost": ac_cost,
-                    "totalCost": total_cost,
-                    "stayDuration": stay_duration,
-                    "acLogs": [{"time": log.time, "cost": log.cost} for log in ac_logs]  # 可选：空调详单
-                }
-            }
 
 # 前台开具详单（查询指定房间的全部信息）
-async def print_record_core(session: SessionDep, authorization: str, data: dict):
+async def print_record_core(session: SessionDep, authorization: str, roomId: int):
     # 验证管理员身份
     # if check_admin(authorization):
     #     print("身份验证成功！")
         # 处理请求体中的房间号数据
-        roomId = data.get("roomId")
-        # 查询该房间的入住记录和空调使用记录
-        with Session(engine) as session:
-            # 查找房间信息
-            room = session.exec(select(Room).where(Room.room_id == roomId)).first()
-            if not room:
-                raise HTTPException(status_code=404, detail="房间不存在")
-            
-            guest_record = session.exec(select(HotelCheck).where(HotelCheck.room_id == roomId).where(HotelCheck.check_out_date == None)).first()
-            if not guest_record:
-                raise HTTPException(status_code=404, detail="该房间没有入住记录")
-            
-            # 获取入住时间
-            check_in_time = guest_record.check_in_date
-            
-            # 查询该房间的空调使用记录
-            ac_logs = session.exec(select(AcLogRecord).where(AcLogRecord.room_id == roomId).all())
-            
-            # 计算空调总消费
-            total_cost = sum(log.cost for log in ac_logs)
-            
-            # 获取住户信息
-            # people_info = session.exec(select(Guest).where(Guest.room_id == roomId)).all()
-            # people = [{"peopleId": guest.id, "peopleName": guest.name} for guest in people_info]
-            
-            # 构建空调使用记录数据
-            records = []
-            for log in ac_logs:
-                record = {
-                    "time": log.time.isoformat(),  # ISO 8601 格式
-                    "cost": log.cost,
-                    "power": log.power,  # "on" 或 "off"
-                    "temperature": log.temperature,
-                    "windSpeed": log.wind_speed,  # "低", "中", "高"
-                    "mode": log.mode,  # "制冷" 或 "制热"
-                    "sweep": log.sweep  # "开" 或 "关"
-                }
-                records.append(record)
-            
-            # 返回响应数据
-            return {
-                "code": 0,
-                "message": "查询成功",
-                "checkInTime": check_in_time.isoformat(),
-                "data": {
-                    "cost": total_cost,  # 总空调消费
-                    # "people": people,
-                    "records": records  # 空调使用记录
-                }
+        print(roomId)
+        # 查找房间信息
+        room = session.exec(select(Room).where(Room.room_id == roomId)).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="房间不存在")
+        
+        guest_record = session.exec(select(HotelCheck).where(HotelCheck.room_id == roomId).where(HotelCheck.check_out_date == None)).first()
+        print(guest_record)
+        if not guest_record:
+            raise HTTPException(status_code=404, detail="该房间没有入住记录")
+        
+        # 获取入住时间
+        check_in_time = guest_record.check_in_date
+        
+        # 查询该房间的空调使用记录
+        ac_logs = session.exec(select(AcControlLog).where(AcControlLog.roomId == roomId).all())
+        print(1, ac_logs)
+        # 计算空调总消费
+        total_cost = sum(log.cost for log in ac_logs)
+        
+        # 获取住户信息
+        # people_info = session.exec(select(Guest).where(Guest.room_id == roomId)).all()
+        # people = [{"peopleId": guest.id, "peopleName": guest.name} for guest in people_info]
+        
+        # 构建空调使用记录数据
+        records = []
+        for log in ac_logs:
+            record = {
+                "time": log.time.isoformat(),  # ISO 8601 格式
+                "cost": log.cost,
+                "power": log.power,  # "on" 或 "off"
+                "temperature": log.temperature,
+                "windSpeed": log.wind_speed,  # "低", "中", "高"
+                "mode": log.mode,  # "制冷" 或 "制热"
+                "sweep": log.sweep  # "开" 或 "关"
             }
+            records.append(record)
+        
+        # 返回响应数据
+        return {
+            "code": 0,
+            "message": "查询成功",
+            "checkInTime": check_in_time.isoformat(),
+            "data": {
+                "cost": total_cost,  # 总空调消费
+                # "people": people,
+                "records": records  # 空调使用记录
+            }
+        }
 
 
 
@@ -267,7 +225,7 @@ async def control_ac_core(
     # 验证风速费率
     fanRates = adjust_request.fanRates
     if adjust_request.fanRates is None or adjust_request.fanRates.lowSpeedRate is None or adjust_request.fanRates.midSpeedRate is None or adjust_request.fanRates.highSpeedRate is None:
-        raise HTTPException(status_code=400, detail="Fan speed rates (low, mid, high) must be provided.")
+        raise HTTPException(status_code=400, detail="必须提供风扇速度（低/中/高）!")
 
     # 更新空调控制表
     ac_control = acControl(ac_model=ACModel(adjust_request.mode), temperature=26)  # 默认温度为26度
@@ -284,7 +242,7 @@ async def control_ac_core(
     session.add(ac_param)
     session.commit()
     # 返回成功响应
-    return JSONResponse(content={"code": 0, "message": "Central air conditioning settings updated successfully."})
+    return JSONResponse(content={"code": 0, "message": "中央空调设置成功"})
 
 
 async def get_ac_states_core(session: SessionDep) -> Dict:
@@ -301,16 +259,22 @@ async def get_ac_states_core(session: SessionDep) -> Dict:
         # 如果没有空调日志或控制信息，跳过此房间
         if not ac_log or not ac_control:
             continue
-
+        wind_level_map = {
+            WindLevel.Low: "低",
+            WindLevel.Medium: "中",
+            WindLevel.High: "高"
+        }
+        wind_speed = wind_level_map[WindLevel(room.wind_level)]
+        
         # 构建每个房间的空调状态数据
         room_state = {
-            "roomId": room.room_id,
+            "roomId": int(room.room_id),
             "roomTemperature": room.roomTemperature,
-            "power": room.power,
+            "power": "on" if room.power else "off",
             "temperature": ac_log.temperature,
-            "windSpeed": WindLevel(room.wind_level),  
-            "mode": ACModel(ac_control.ac_model),  
-            "sweep": room.sweep,  # 扫风状态
+            "windSpeed": wind_speed,  # 风速
+            "mode": "制热" if ACModel(ac_control.ac_model) else "制冷",  # 空调模式
+            "sweep": "开" if room.sweep else "关",  # 扫风状态
             "cost": room.cost,  # 当前房间空调费用
             "totalCost": room.totalCost,  # 累计费用
             "status": room.status,  # 状态字段，表示空调调度状态
@@ -365,7 +329,7 @@ async def room_ac_control_core(
 
 
 #查询指定房间的空调控制面板信息
-def room_ac_state_core(room_id: int, session: Session) -> Dict:
+async def room_ac_state_core(room_id: int, session: Session) -> Dict:
     # 获取房间的当前空调控制面板信息
     room = session.exec(select(Room).where(Room.room_id == str(room_id))).first()
     if not room:
@@ -380,17 +344,23 @@ def room_ac_state_core(room_id: int, session: Session) -> Dict:
     ac_control = session.exec(select(acControl).order_by(acControl.record_time.desc())).first()
     if not ac_control:
         raise HTTPException(status_code=404, detail="No AC control settings found")
-
+    wind_level_map = {
+            WindLevel.Low: "低",
+            WindLevel.Medium: "中",
+            WindLevel.High: "高"
+    }
+    wind_speed = wind_level_map[WindLevel(room.wind_level)]
     # 格式化返回数据
     response_data = {
         "roomTemperature": room.roomTemperature ,  # 默认室温为26度
         "power": "on" if ac_log.power else "off",
         "temperature": ac_log.temperature,         #目标温度
-        "windSpeed": WindLevel(room.wind_level),  # 风速
-        "mode": ACModel(ac_control.ac_model),  # 空调模式
+        "windSpeed": wind_speed,  # 风速
+        "mode": "制热" if ACModel(ac_control.ac_model) else "制冷",  # 空调模式
         "sweep": "开" if room.sweep else "关",
         "cost": room.cost,  # 当前费用
         "totalCost": room.totalCost #累计费用
     }
     
-    return response_data
+    response = {"code": 0, "message": "操作成功", "data": response_data}
+    return response

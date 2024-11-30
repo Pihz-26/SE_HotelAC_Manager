@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Header, Body
-from dbcontrol import Room, SessionDep, create_db_and_tables
+from fastapi import FastAPI, Header, Body, Query
+from dbcontrol import SessionDep, create_db_and_tables
 from contextlib import asynccontextmanager
 from core import *
 from respond_body import *
+from fastapi.middleware.cors import CORSMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -13,7 +14,14 @@ async def lifespan(app: FastAPI):
     
 app = FastAPI(lifespan=lifespan)
 
-
+# 允许所有域名访问（仅用于开发，生产环境中可以限制特定域名）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有 HTTP 方法
+    allow_headers=["*"],  # 允许所有头部
+)
 
 #添加房间
 # @app.post("/add-room/")
@@ -22,53 +30,51 @@ app = FastAPI(lifespan=lifespan)
 #     return {"message": f"Room {room_data.room_id} added successfully!"}
 
 # 控制指定房间的空调设置
-@app.get("/aircon/control")
+@app.post("/aircon/control")
 async def room_ac_control(
     request: RoomACStatusControlRequest,  # 请求体
     session: SessionDep  # 获取数据库 sessionDep
 ):
-    # 调用核心函数
     return await room_ac_control_core(request, session)
 
 # 查询指定房间的空调控制面板信息
 @app.get("/aircon/panel")
 async def room_ac_state(roomId: int, session: SessionDep):
     # 调用核心函数获取指定房间的空调状态
-    data = room_ac_state_core(roomId, session)
-    return {"code": 0, "message": "操作成功", "data": data}
-
+    return await room_ac_state_core(roomId, session)
+    
 # 登录时获取用户角色（验证账号密码后发放JWT）
-@app.get("/admin/login")
+@app.post("/admin/login")
 # 从请求头获取Authorization字段
 async def admin_login(session: SessionDep, data: AdminLoginRequest = Body(...)):
     return await admin_login_core(data, session)
 
 # 前台获取入住情况（查询所有房间的入住信息）
-@app.get("/stage/query")   
+@app.post("/stage/query")   
 async def room_state(session: SessionDep, authorization: str = Header(...)):
     return await room_state_core(session, authorization)
     
 
 # 前台办理入住（向指定房间添加新的顾客）
-@app.get("/stage/add") 
+@app.post("/stage/add") 
 async def check_in(session: SessionDep, authorization: str = Header(...), data: dict = Body(...)):
     return await check_in_core(session, authorization, data)
     
 
 # 前台办理结账/退房（生成账单并更新房间状态）
 @app.get("/stage/delete")
-async def check_out(session: SessionDep, authorization: str = Header(...), data: dict = Body(...)):
-    return await check_out_core(session, authorization, data)
+async def check_out(session: SessionDep, authorization: str = Header(...), roomId: int = Query(...)):
+    return await check_out_core(session, authorization, roomId)
     
 
 # 前台开具详单（查询指定房间的全部信息）
 @app.get("/stage/record")
-async def print_record(session: SessionDep, authorization: str = Header(...), data: dict = Body(...)):
-    return await print_record_core(session, authorization, data)
+async def print_record(session: SessionDep, authorization: str = Header(...), roomId: int = Query(...)):
+    return await print_record_core(session, authorization, roomId)
     
 
 # 管理员调整中央空调的全局设置，包括工作模式、温度范围和风速费率。
-@app.get("/central-aircon/adjust")
+@app.post("/central-aircon/adjust")
 async def control_ac(
     adjust_request:CenterAcControlRequest,  # 请求数据
     session: SessionDep # 获取数据库 session
@@ -83,8 +89,7 @@ async def get_ac_states(session: SessionDep):
     管理员获取整个酒店空调的运行状态和参数信息。
     调用核心函数获取空调状态数据并返回。
     """
-    result = await get_ac_states_core(session)
-    return result
+    return await get_ac_states_core(session)
 
 # 获取空调最近一周的操作记录
 @app.get("/admin/query_ac")

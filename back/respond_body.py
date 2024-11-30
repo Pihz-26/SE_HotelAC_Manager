@@ -21,14 +21,14 @@ class RoomACData(BaseModel):
     cost: float
     totalCost: float
 
-      
+
 class CheckInState(BaseModel):
     roomId: int  # 拼写错误
     roomLevel: str
     cost: int
-    checkInTime: datetime
-    people: Optional[Person]
- 
+    checkInTime: Optional[datetime]  # 为了符合API文档规范，可以输出None，事实上为必须
+    people: List[Person]  # 根据API文档更改为List类型
+
 class AcLogRecord(BaseModel):
     time: datetime
     cost: float
@@ -68,74 +68,8 @@ class AcControlLog(BaseModel):
     mode:   str
     sweep: str
     status: str
-    timeSlice: int
-    
-class AcScheduleLog(BaseModel):
-    time: datetime
-    waitQueue: Optional[int]
-    runningQueue: Optional[int] 
-    
-class RoomStatus(BaseModel):
-    roomId: int
-    roomLevel: str
-    people: Optional[Person]
-    cost: int
-    roomTemperature: int
-    power: str
-    temperature: int
-    windSpeed: str
-    mode: str
-    sweep: str
- 
- 
-
-class CheckInState(BaseModel):
-    roomId: int  # 拼写错误
-    roomLevel: str
-    cost: int
-    checkInTime: Optional[datetime]  # 为了符合API文档规范，可以输出None，事实上为必须
-    people: List[Person]  # 根据API文档更改为List类型
- 
-class AcLogRecord(BaseModel):
-    time: datetime
-    cost: float
-    power: str
-    temperature: int
-    windSpeed: str
-    mode: str
-    sweep: str
-    
-
-class RoomRecords(BaseModel):
-    cost: int
-    people: Optional[Person]
-    records: Optional[AcLogRecord]  
-
-class RoomAcStatus(BaseModel):
-    roomId: int
-    roomTemperature: int
-    power: str
-    temperature: int
-    windSpeed: str
-    mode: str
-    sweep: str
-    cost: float
-    totalCost: float
-    status: int
     timeSlice: int 
-  
-class AcControlLog(BaseModel):
-    roomId: int
-    time: datetime
-    cost: float
-    energyCost: float
-    power: str
-    temperature: int
-    windSpeed: str
-    mode:   str
-    sweep: str
-    status: str
-    timeSlice: int
+
     
 class AcScheduleLog(BaseModel):
     time: datetime
@@ -224,10 +158,10 @@ class FanRate(BaseModel):
     
 # 房间空调状态设置的请求体
 class RoomACStatusControlRequest(BaseModel):
-    roomId: int                # 房间号，类型为整型
-    power: Literal["on", "off"]               # 电源状态，例如 "on" 或 "off"
-    temperature: int           # 温度，类型为整型
-    windSpeed: Literal["低", "中", "高"]             # 风速，可能为 "低", "中", "高" 等
+    roomId: int  # 房间号，类型为整型
+    power: Literal["on", "off"]  # 电源状态，例如 "on" 或 "off"
+    temperature: int  # 温度，类型为整型
+    windSpeed: Literal["低", "中", "高"]  # 风速，可能为 "低", "中", "高" 等
     sweep: str       
     
 class AdminLoginRequest(BaseModel):
@@ -235,15 +169,9 @@ class AdminLoginRequest(BaseModel):
     password: str
     
     
-    
-    
 class CenterAcControlRequest(BaseModel):
     mode: int
     resourceLimit: int
     fanRates: Optional[FanRate]
-    
-    
-    
-    
     
     
