@@ -78,7 +78,7 @@ def callback():
             AC_active.append(ac_r)
         # 风速相等的情况下，查看是否完成了时间片
         elif AC_ready[0].wind_level == AC_active[0].wind_level:
-            if now - AC_active[0].start_time > timeslice:
+            if now - AC_active[0].start_time >= timeslice:
                 ac_a = AC_active.pop[0]
                 ac_r = AC_ready.pop[0]
                 ac_a.start_time = now
