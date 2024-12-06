@@ -2,6 +2,18 @@ from pydantic import BaseModel
 from typing import Optional, Literal
 from datetime import datetime
 
+class Person(BaseModel):
+    peopleId: int
+    peopleName: str
+    
+class NormalRespond(BaseModel):
+from typing import Optional, Literal
+from datetime import datetime
+
+class Person(BaseModel):
+    peopleId: int
+    peopleName: str
+    
 class NormalRespond(BaseModel):
     code: int
     message: str
@@ -16,6 +28,73 @@ class RoomACData(BaseModel):
     sweep: str
     cost: float
     totalCost: float
+    
+
+class CheckInState(BaseModel):
+    roodId: int
+    roomLevel: str
+    cost: int
+    checkInTime: datetime
+    people: Optional[Person]
+ 
+class AcLogRecord(BaseModel):
+    time: datetime
+    cost: float
+    power: str
+    temperature: int
+    windSpeed: str
+    mode: str
+    sweep: str
+    
+
+class RoomRecords(BaseModel):
+    cost: int
+    people: Optional[Person]
+    records: Optional[AcLogRecord] 
+  
+class RoomAcStatus(BaseModel):
+    roomId: int
+    roomTemperature: int
+    power: str
+    temperature: int
+    windSpeed: str
+    mode: str
+    sweep: str
+    cost: float
+    totalCost: float
+    status: int
+    timeSlice: int 
+  
+class AcControlLog(BaseModel):
+    roomId: int
+    time: datetime
+    cost: float
+    energyCost: float
+    power: str
+    temperature: int
+    windSpeed: str
+    mode:   str
+    sweep: str
+    status: str
+    timeSlice: int
+    
+class AcScheduleLog(BaseModel):
+    time: datetime
+    waitQueue: Optional[int]
+    runningQueue: Optional[int] 
+    
+class RoomStatus(BaseModel):
+    roomId: int
+    roomLevel: str
+    people: Optional[Person]
+    cost: int
+    roomTemperature: int
+    power: str
+    temperature: int
+    windSpeed: str
+    mode: str
+    sweep: str
+  
     
 
 class CheckInState(BaseModel):
@@ -163,15 +242,13 @@ class AdminLoginRequest(BaseModel):
     username: str
     password: str
     
-class Person(BaseModel):
-    peopleId: int
-    peopleName: str
+
     
     
 class CenterAcControlRequest(BaseModel):
     mode: int
     resourceLimit: int
-    fanRate: Optional[FanRate]
+    fanRates: Optional[FanRate]
     
 
 

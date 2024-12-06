@@ -90,7 +90,7 @@ class acPamater(SQLModel, table=True):
 
        
 class User(SQLModel, table=True):
-    user_id: str = Field(default="123")
+    user_id: str = Field(default="123", primary_key=True)
     password: str = Field(default="123")
 
   
@@ -143,6 +143,10 @@ def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
     session.add_all(final_data)
     session.commit()
 
+# 数据库中编写入住数据，请在执行之前进行相应数据合法性检测
+def data_room(room_data:Room, session: SessionDep):
+    session.add(room_data)
+    session.commit()
 
 # 数据库中进行退房数据更改，请在执行前进行相应数据的合法性检测
 def data_check_out(room_id: str, session: SessionDep):  
@@ -157,7 +161,7 @@ def data_check_out(room_id: str, session: SessionDep):
     current_time = datetime.now()
     for hotel_check in results:
         hotel_check.check_out_date = current_time
-        
+       
     session.commit()
 
 # 空调控制记录
