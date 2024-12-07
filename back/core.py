@@ -14,8 +14,8 @@ ALGORITHM = 'HS256'
 
 # 签发JWT token
 async def create_jwt_token(user_id: str, role: str) -> str:
-    # 设置JWT过期时间为1小时
-    expiration = datetime.now() + timedelta(hours=1)  
+    # 设置JWT过期时间为30天
+    expiration = datetime.now() + timedelta(days=30)  
     payload = {
         "user_id": user_id,
         "role": role,
@@ -94,7 +94,7 @@ async def room_state_core(session: SessionDep, authorization: str):
                             )
             room_data_list.append(room_data)
         # 构建并返回成功响应
-        response = RoomStatusRespond(
+        response = CheckInStateRespond(
             code=0,
             message="查询成功",
             data=room_data_list
@@ -303,26 +303,53 @@ async def room_ac_control_core(
     power_status = True if request.power == 'on' else False
     wind_speed_map = {"低": WindLevel.Low, "中": WindLevel.Medium, "高": WindLevel.High}
     sweep_status = True if request.sweep == '开' else False
-
+    
     if request.windSpeed not in wind_speed_map:
         raise HTTPException(status_code=400, detail="Invalid wind speed value. Must be '低', '中', or '高'.")
     
-    # 更新房间的空调状态
-    room.power = power_status
-    room.wind_level = wind_speed_map[request.windSpeed]
-    room.sweep = sweep_status
-    session.add(room)
-    session.commit()
+    if room.power == True:
+        ac_param = session.exec(select(acPamater).where(acPamater.precept == 1)).first()
+        print(ac_param)
+        
+        # 根据 windSpeed 的值选择对应的 rate
+        if request.windSpeed == "低":
+            rate = ac_param.low_cost_rate
+        elif request.windSpeed == "中":
+            rate = ac_param.middle_cost_rate
+        elif request.windSpeed == "高":
+            rate = ac_param.high_cost_rate
+            
+        # 查询该房间的空调操作记录，按时间降序排序，取最新的一条
+        statement = select(acLog).filter(acLog.room_id == request.roomId).order_by(acLog.change_time.desc())
+        last_acLog = session.exec(statement).first()
 
+        if last_acLog is None:
+            raise HTTPException(status_code=404, detail="此房间无操作记录")
+        
+        last_change_time = last_acLog.change_time
+        duration = datetime.now() - last_change_time
+        duration_minutes = duration.total_seconds() / 60
+        cost = rate * duration_minutes
+    else:
+        cost = 0
+    
     # 记录空调操作日志
     ac_log = acLog(
         room_id=str(request.roomId),
         power=power_status,
         temperature=request.temperature,
         wind_level=wind_speed_map[request.windSpeed],
-        sweep=sweep_status
+        sweep=sweep_status,
+        cost=cost,
+        cur_status=room.status
     )
     session.add(ac_log)
+    session.commit()
+    
+    # 更新房间的空调状态
+    room.power = power_status
+    room.wind_level = wind_speed_map[request.windSpeed]
+    room.sweep = sweep_status    
     session.commit()
 
     return {"code": 0, "message": "空调设置已更新"}
@@ -364,3 +391,134 @@ async def room_ac_state_core(room_id: int, session: Session) -> Dict:
     
     response = {"code": 0, "message": "操作成功", "data": response_data}
     return response
+
+async def get_ac_control_log_core(session: SessionDep, authorization: str):
+        # 校验身份
+        one_week_ago = datetime.now() - timedelta(weeks=1)
+        statement = select(acLog).filter(acLog.change_time >= one_week_ago).order_by(acLog.change_time.desc())
+        
+        results = session.exec(statement).all()
+        if not results:
+            raise HTTPException(status_code=404, detail="过去一周无任何空调操作记录")
+        print(1)
+        # 处理查询结果
+        ac_logs = []
+        wind_level_map = {
+                WindLevel.Low: "低",
+                WindLevel.Medium: "中",
+                WindLevel.High: "高"
+        }
+
+        for record in results:
+            wind_speed = wind_level_map[record.wind_level]
+            ac_log = AcControlLog(
+                roomId=record.room_id,
+                time=record.change_time,
+                cost=round(record.cost, 2),  
+                energyCost=record.wind_level * record.temperature,  
+                power="on" if record.power else "off",
+                temperature=record.temperature,
+                windSpeed=wind_speed,
+                mode="制冷" if record.ac_model == ACModel.Cold else "制热",
+                sweep="开" if record.sweep else "关",
+                status="运行" if record.power else "关闭",
+                #
+                #
+                #
+                timeSlice=30
+                #
+                #
+                # 
+            )
+            ac_logs.append(ac_log)
+        
+        return WeeklyAcControlLogRespond(code=0, message="查询成功", data=ac_logs)
+    
+async def get_ac_schedule_log_core(session: SessionDep, authorization: str):
+        # 校验身份
+        
+        pass
+    
+async def get_guest_log_core(session: SessionDep, authorization: str):
+        # 校验身份
+        # 获取当前时间
+        now = datetime.now()
+        one_week_ago = now - timedelta(days=7)  # 过去一周的时间
+
+        # 查询过去一周内的入住/离开记录
+        statement = select(HotelCheck).where(HotelCheck.check_in_date >= one_week_ago)
+        results = session.exec(statement).all()
+
+        # 如果没有找到记录
+        if not results:
+            raise HTTPException(status_code=404, detail="没有找到过去一周的客流记录")
+
+        # 生成客流记录
+        people_logs = []
+        for record in results:
+            # 入住记录
+            people_logs.append(PeopleLog(time=record.check_in_date, roomId=record.room_id, operation="入住"))
+            # 离开记录（如果存在）
+            if record.check_out_date:
+                people_logs.append(PeopleLog(time=record.check_out_date, roomId=record.room_id, operation="离开"))
+        
+        # 返回成功响应
+        return WeeklyPeopleLogRespond(
+            code=0,
+            message="查询成功",
+            data=people_logs
+        )
+    
+async def get_room_state_core(session: SessionDep, authorization: str):
+        # 获取所有房间信息
+        room_data_list = []
+        rooms = session.exec(select(Room)).all()
+        print('\n', 1, rooms)
+        ac_control = session.exec(select(acControl).order_by(acControl.record_time.desc())).first()
+        
+        
+        mode = "制热" if ac_control.ac_model else "制冷"
+        wind_level_map = {
+        WindLevel.Low: "低",
+        WindLevel.Medium: "中",
+        WindLevel.High: "高"
+        }
+        for room in rooms:
+            # 查询当前房间的入住信息
+            hotel_checks = session.exec(select(HotelCheck).
+                where(HotelCheck.room_id == room.room_id)).all()
+            print('\n', 2, hotel_checks)
+            if hotel_checks:
+                # 构建住户信息
+                people_info = []
+                for check in hotel_checks:
+                    people = Person(
+                        peopleId = 0 if check.person_id == "None" else int(check.person_id),
+                        peopleName = check.guest_name,
+                        )
+                    people_info.append(people)
+                print('\n', 3, people_info)
+                # 创建响应数据结构
+                print(room.room_id)
+                if room.state:
+                    room_data = RoomStatus(
+                        roomId=int(room.room_id),
+                        roomLevel=room.room_level.value,  # 通过枚举值获取房间类型
+                        
+                        
+                        people=people_info,
+                        cost=room.cost,
+                        roomTemperature=room.roomTemperature,
+                        power="on" if room.power else "off",
+                        temperature=room.roomTemperature,
+                        windSpeed=wind_level_map[room.wind_level],
+                        mode=mode,
+                        sweep="开" if room.sweep else "关",
+                        )
+            room_data_list.append(room_data)
+
+        return RoomStatusRespond(
+            code=0,
+            message="查询成功",
+            data=room_data_list
+        )

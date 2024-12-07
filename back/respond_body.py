@@ -79,7 +79,7 @@ class AcScheduleLog(BaseModel):
 class RoomStatus(BaseModel):
     roomId: int
     roomLevel: str
-    people: Optional[Person]
+    people: List[Person]
     cost: int
     roomTemperature: int
     power: str
@@ -129,26 +129,31 @@ class TotalAcStatusRespond(BaseModel):
 class WeeklyAcControlLogRespond(BaseModel):
     code: int
     message: str
-    data: Optional[AcControlLog]
+    data: List[AcControlLog]
  
    
 class WeeklyAcScheduleRespond(BaseModel):
     code: int
     message: str
-    data: Optional[AcScheduleLog]
+    data: List[AcScheduleLog]
    
 
        
 class WeeklyPeopleLogRespond(BaseModel):
     code: int
     message: str
-    data: Optional[PeopleLog]
+    data: List[PeopleLog]
     
   
-class RoomStatusRespond(BaseModel):
+class CheckInStateRespond(BaseModel):
     code: int
     message: str
     data: List[CheckInState]  # 根据API文档修改
+    
+class RoomStatusRespond(BaseModel):
+    code: int
+    message: str
+    data: List[RoomStatus]  # 根据API文档修改
     
 
 class FanRate(BaseModel):

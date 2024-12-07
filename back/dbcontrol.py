@@ -25,10 +25,6 @@ class ACModel(int, Enum):
     Cold= 0
     Warm= 1
 
-class Status(int,Enum):
-    waiting=0
-    runing=1
-    noschedule =2
     
 # 房间数据表    
 class Room(SQLModel, table=True):
@@ -46,7 +42,7 @@ class Room(SQLModel, table=True):
     power: bool = Field(default=False, description="Whether the AC has been launched or not")
     # 定义与 HotelCheck 的关系
     hotel_checks: List["HotelCheck"] = Relationship(back_populates="room")
-    status:Status = Field(default=Status.noschedule, description="AC schedule status")
+    status:bool = Field(default=False, description="AC schedule status")
     
     
     
@@ -74,6 +70,8 @@ class acLog(SQLModel, table=True):
     power:bool = Field(default=False, description="Whether the AC has been launched or not")
     wind_level: WindLevel = Field(default=WindLevel.Low, description="AC's wind level")
     sweep: bool = Field(default=False, description="Launch sweep mode or not")
+    cost: int = Field(default=0)
+    cur_status: bool = Field(default=False)
 
 # 中央空调控制表，按照需求应该只用调节温度和模式
 class acControl(SQLModel, table=True):

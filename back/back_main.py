@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     
 app = FastAPI(lifespan=lifespan)
 
-# 允许所有域名访问（仅用于开发，生产环境中可以限制特定域名）
+# 允许所有域名访问
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -93,21 +93,21 @@ async def get_ac_states(session: SessionDep):
 
 # 获取空调最近一周的操作记录
 @app.get("/admin/query_ac")
-async def get_ac_control_log():
-    pass
+async def get_ac_control_log(session: SessionDep, authorization: str = Header(...)):
+    return await get_ac_control_log_core(session, authorization)
 
 # 获取空调一周的调度记录
 @app.get("/admin/query_ac")
-async def get_ac_schedule_log():
-    pass
+async def get_ac_schedule_log(session: SessionDep, authorization: str = Header(...)):
+    return await get_ac_schedule_log_core(session, authorization)
 
 # 获取空调一周的客流记录
 @app.get("/admin/query_people")
-async def get_guest_log():
-    pass
+async def get_guest_log(session: SessionDep, authorization: str = Header(...)):
+    return await get_guest_log_core(session, authorization)
 
 # 获取所有房间信息
 @app.get("/admin/query_room")
-async def get_room_state():
-    pass
+async def get_room_state(session: SessionDep, authorization: str = Header(...)):
+    return await get_room_state_core(session, authorization)
 
