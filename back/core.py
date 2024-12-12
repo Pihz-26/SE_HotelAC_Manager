@@ -1,11 +1,11 @@
+from fastapi import HTTPException
+from sqlmodel import Session, select
+from typing import Dict 
 from respond_body import *
 from dbcontrol import *
-from sqlmodel import Session, select 
 from fastapi.responses import JSONResponse
-from datetime import datetime, timedelta
-from fastapi import HTTPException
-from typing import Dict
 import jwt
+from datetime import datetime, timedelta
 from check_admin import *
 
 # 预定义的密钥和算法
@@ -153,18 +153,13 @@ async def check_out_core(session: SessionDep, authorization: str, roomId: int):
         
 
 # 前台开具详单（查询指定房间的全部信息）
-async def print_record_core(session: SessionDep, authorization: str, roomId: int):
-    # 验证管理员身份
-    # if check_admin(authorization):
-    #     print("身份验证成功！")
-        # 处理请求体中的房间号数据
-        print(roomId)
+async def print_record_core(session: SessionDep, roomId: int):
         # 查找房间信息
         room = session.exec(select(Room).where(Room.room_id == roomId)).first()
         if not room:
             raise HTTPException(status_code=404, detail="房间不存在")
         
-        guest_record = session.exec(select(HotelCheck).where(HotelCheck.room_id == roomId).where(HotelCheck.check_out_date == None)).first()
+        guest_record = room.hotel_checks[-1]
         print(guest_record)
         if not guest_record:
             raise HTTPException(status_code=404, detail="该房间没有入住记录")
@@ -173,7 +168,7 @@ async def print_record_core(session: SessionDep, authorization: str, roomId: int
         check_in_time = guest_record.check_in_date
         
         # 查询该房间的空调使用记录
-        ac_logs = session.exec(select(AcControlLog).where(AcControlLog.roomId == roomId).all())
+        ac_logs = session.exec(select(acLog).where(acLog.room_id == roomId)).all()
         print(1, ac_logs)
         # 计算空调总消费
         total_cost = sum(log.cost for log in ac_logs)
@@ -186,12 +181,12 @@ async def print_record_core(session: SessionDep, authorization: str, roomId: int
         records = []
         for log in ac_logs:
             record = {
-                "time": log.time.isoformat(),  # ISO 8601 格式
+                "time": log.change_time.isoformat(),  # ISO 8601 格式
                 "cost": log.cost,
                 "power": log.power,  # "on" 或 "off"
                 "temperature": log.temperature,
-                "windSpeed": log.wind_speed,  # "低", "中", "高"
-                "mode": log.mode,  # "制冷" 或 "制热"
+                "windSpeed": log.wind_level,  # "低", "中", "高"
+                "mode": log.ac_model,  # "制冷" 或 "制热"
                 "sweep": log.sweep  # "开" 或 "关"
             }
             records.append(record)
@@ -252,33 +247,24 @@ async def get_ac_states_core(session: SessionDep) -> Dict:
     # 生成空调状态列表
     ac_states = []
     for room in rooms:
-        # 获取该房间的空调日志
-        ac_log = session.exec(select(acLog).where(acLog.room_id == room.room_id).order_by(acLog.change_time.desc())).first()
         # 获取空调控制信息
         ac_control = session.exec(select(acControl).order_by(acControl.record_time.desc())).first()
         # 如果没有空调日志或控制信息，跳过此房间
-        if not ac_log or not ac_control:
+        if  not ac_control:
             continue
-        wind_level_map = {
-            WindLevel.Low: "低",
-            WindLevel.Medium: "中",
-            WindLevel.High: "高"
-        }
-        wind_speed = wind_level_map[WindLevel(room.wind_level)]
-        
+
         # 构建每个房间的空调状态数据
         room_state = {
-            "roomId": int(room.room_id),
+            "roomId": room.room_id,
             "roomTemperature": room.roomTemperature,
-            "power": "on" if room.power else "off",
-            "temperature": ac_log.temperature,
-            "windSpeed": wind_speed,  # 风速
-            "mode": "制热" if ACModel(ac_control.ac_model) else "制冷",  # 空调模式
-            "sweep": "开" if room.sweep else "关",  # 扫风状态
+            "power": room.power,
+            "targetTemperature": room.targetTemperature,
+            "windSpeed": WindLevel(room.wind_level),  
+            "mode": ACModel(ac_control.ac_model),  
+            "sweep": room.sweep,  # 扫风状态
             "cost": room.cost,  # 当前房间空调费用
             "totalCost": room.totalCost,  # 累计费用
             "status": room.status,  # 状态字段，表示空调调度状态
-            "timeSlice": 3  # 表示分配的时间片长度
             }
         ac_states.append(room_state)
                      
@@ -303,53 +289,27 @@ async def room_ac_control_core(
     power_status = True if request.power == 'on' else False
     wind_speed_map = {"低": WindLevel.Low, "中": WindLevel.Medium, "高": WindLevel.High}
     sweep_status = True if request.sweep == '开' else False
-    
+
     if request.windSpeed not in wind_speed_map:
         raise HTTPException(status_code=400, detail="Invalid wind speed value. Must be '低', '中', or '高'.")
     
-    if room.power == True:
-        ac_param = session.exec(select(acPamater).where(acPamater.precept == 1)).first()
-        print(ac_param)
-        
-        # 根据 windSpeed 的值选择对应的 rate
-        if request.windSpeed == "低":
-            rate = ac_param.low_cost_rate
-        elif request.windSpeed == "中":
-            rate = ac_param.middle_cost_rate
-        elif request.windSpeed == "高":
-            rate = ac_param.high_cost_rate
-            
-        # 查询该房间的空调操作记录，按时间降序排序，取最新的一条
-        statement = select(acLog).filter(acLog.room_id == request.roomId).order_by(acLog.change_time.desc())
-        last_acLog = session.exec(statement).first()
+    # 更新房间的空调状态
+    room.targetTemperature = request.temperature
+    room.power = power_status
+    room.wind_level = wind_speed_map[request.windSpeed]
+    room.sweep = sweep_status
+    session.add(room)
+    session.commit()
 
-        if last_acLog is None:
-            raise HTTPException(status_code=404, detail="此房间无操作记录")
-        
-        last_change_time = last_acLog.change_time
-        duration = datetime.now() - last_change_time
-        duration_minutes = duration.total_seconds() / 60
-        cost = rate * duration_minutes
-    else:
-        cost = 0
-    
     # 记录空调操作日志
     ac_log = acLog(
         room_id=str(request.roomId),
         power=power_status,
         temperature=request.temperature,
         wind_level=wind_speed_map[request.windSpeed],
-        sweep=sweep_status,
-        cost=cost,
-        cur_status=room.status
+        sweep=sweep_status
     )
     session.add(ac_log)
-    session.commit()
-    
-    # 更新房间的空调状态
-    room.power = power_status
-    room.wind_level = wind_speed_map[request.windSpeed]
-    room.sweep = sweep_status    
     session.commit()
 
     return {"code": 0, "message": "空调设置已更新"}
@@ -362,35 +322,30 @@ async def room_ac_state_core(room_id: int, session: Session) -> Dict:
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    # 获取空调的最新记录（acLog）
-    ac_log = session.exec(select(acLog).where(acLog.room_id == str(room_id)).order_by(acLog.change_time.desc())).first()
-    if not ac_log:
-        raise HTTPException(status_code=404, detail="No AC log found for this room")
+    
 
     # 获取空调控制的全局设置（acControl）
     ac_control = session.exec(select(acControl).order_by(acControl.record_time.desc())).first()
     if not ac_control:
         raise HTTPException(status_code=404, detail="No AC control settings found")
-    wind_level_map = {
-            WindLevel.Low: "低",
-            WindLevel.Medium: "中",
-            WindLevel.High: "高"
-    }
-    wind_speed = wind_level_map[WindLevel(room.wind_level)]
+
     # 格式化返回数据
     response_data = {
         "roomTemperature": room.roomTemperature ,  # 默认室温为26度
-        "power": "on" if ac_log.power else "off",
-        "temperature": ac_log.temperature,         #目标温度
-        "windSpeed": wind_speed,  # 风速
-        "mode": "制热" if ACModel(ac_control.ac_model) else "制冷",  # 空调模式
+        "power": "on" if room.power else "off",
+        "temperature": room.targetTemperature,         #目标温度
+        "windSpeed": WindLevel(room.wind_level),  # 风速
+        "mode": ACModel(ac_control.ac_model),  # 空调模式
         "sweep": "开" if room.sweep else "关",
         "cost": room.cost,  # 当前费用
         "totalCost": room.totalCost #累计费用
     }
     
-    response = {"code": 0, "message": "操作成功", "data": response_data}
-    return response
+    return {
+        "code": 0,
+        "message": "操作成功",
+        "data": response_data
+    }
 
 async def get_ac_control_log_core(session: SessionDep, authorization: str):
         # 校验身份
@@ -488,33 +443,33 @@ async def get_room_state_core(session: SessionDep, authorization: str):
             hotel_checks = session.exec(select(HotelCheck).
                 where(HotelCheck.room_id == room.room_id)).all()
             print('\n', 2, hotel_checks)
+            people_info = []
             if hotel_checks:
                 # 构建住户信息
-                people_info = []
+                
                 for check in hotel_checks:
                     people = Person(
                         peopleId = 0 if check.person_id == "None" else int(check.person_id),
                         peopleName = check.guest_name,
                         )
+                    print(people)
                     people_info.append(people)
-                print('\n', 3, people_info)
-                # 创建响应数据结构
-                print(room.room_id)
-                if room.state:
-                    room_data = RoomStatus(
-                        roomId=int(room.room_id),
-                        roomLevel=room.room_level.value,  # 通过枚举值获取房间类型
-                        
-                        
-                        people=people_info,
-                        cost=room.cost,
-                        roomTemperature=room.roomTemperature,
-                        power="on" if room.power else "off",
-                        temperature=room.roomTemperature,
-                        windSpeed=wind_level_map[room.wind_level],
-                        mode=mode,
-                        sweep="开" if room.sweep else "关",
-                        )
+            print('\n', 3, people_info)
+            # 创建响应数据结构
+            print(room.room_id)
+            room_data = RoomStatus(
+                roomId=int(room.room_id),
+                roomLevel=room.room_level.value,  # 通过枚举值获取房间类型
+                                    
+                people=people_info,
+                cost=room.cost,
+                roomTemperature=room.roomTemperature,
+                power="on" if room.power else "off",
+                temperature=room.roomTemperature,
+                windSpeed=wind_level_map[room.wind_level],
+                mode=mode,
+                sweep="开" if room.sweep else "关",
+                )
             room_data_list.append(room_data)
 
         return RoomStatusRespond(

@@ -23,11 +23,11 @@ class RoomACData(BaseModel):
 
 
 class CheckInState(BaseModel):
-    roomId: int  # 拼写错误
+    roomId: int  
     roomLevel: str
     cost: int
-    checkInTime: Optional[datetime]  # 为了符合API文档规范，可以输出None，事实上为必须
-    people: List[Person]  # 根据API文档更改为List类型
+    checkInTime: Optional[datetime]  
+    people: List[Person]  
 
 class AcLogRecord(BaseModel):
     time: datetime
@@ -148,12 +148,12 @@ class WeeklyPeopleLogRespond(BaseModel):
 class CheckInStateRespond(BaseModel):
     code: int
     message: str
-    data: List[CheckInState]  # 根据API文档修改
+    data: List[CheckInState]
     
 class RoomStatusRespond(BaseModel):
     code: int
     message: str
-    data: List[RoomStatus]  # 根据API文档修改
+    data: List[RoomStatus]
     
 
 class FanRate(BaseModel):

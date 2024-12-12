@@ -1,15 +1,22 @@
 from fastapi import FastAPI, Header, Body, Query
-from dbcontrol import SessionDep, create_db_and_tables
-from contextlib import asynccontextmanager
 from core import *
-from respond_body import *
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-
+from schedule import start_scheduler
+import uvicorn
+    
+    
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 在应用启动时执行数据库初始化操作
     with Session(engine) as session:
         create_db_and_tables(session)
+        init_users(session)
+        # init_rooms(session)
+    # 启动调度器
+    print("Starting scheduler...")
+    start_scheduler()
+    print("Scheduler is running.")
     yield
     
 app = FastAPI(lifespan=lifespan)
@@ -23,11 +30,43 @@ app.add_middleware(
     allow_headers=["*"],  # 允许所有头部
 )
 
-#添加房间
-# @app.post("/add-room/")
-# async def add_room(room_data: Room, session: SessionDep):
-#     data_room(room_data, session)
-#     return {"message": f"Room {room_data.room_id} added successfully!"}
+# 添加房间
+@app.post("/add-room/")
+async def add_room(room_data: Room, session: SessionDep):
+    data_room(room_data, session)
+    return {"message": f"Room {room_data.room_id} added successfully!"}
+
+@app.delete("/delete-room/")
+async def delete_room_endpoint(room_id: str, session: SessionDep):
+    """
+    删除房间的接口。
+    参数：
+        - room_id: 查询参数，用于指定要删除的房间ID
+        - session: 数据库会话（依赖注入）
+    返回：
+        - 删除成功的消息
+    """
+    try:
+        delete_room(room_id, session)
+        return {"message": f"Room {room_id} deleted successfully!"}
+    except ValueError as e:
+        return {"error": str(e)}
+    
+@app.delete("/delete-acLog/")
+async def delete_acLog_endpoint(room_id: str, session: SessionDep):
+    """
+    删除指定房间的所有 acLog 记录。
+    参数：
+        - room_id: 房间 ID（路径参数）
+        - session: 数据库会话（依赖注入）
+    返回：
+        - 删除成功的消息
+    """
+    try:
+        message = delete_acLog(room_id, session)
+        return {"message": message}
+    except ValueError as e:
+        return {"error": str(e)}
 
 # 控制指定房间的空调设置
 @app.post("/aircon/control")
@@ -69,8 +108,8 @@ async def check_out(session: SessionDep, authorization: str = Header(...), roomI
 
 # 前台开具详单（查询指定房间的全部信息）
 @app.get("/stage/record")
-async def print_record(session: SessionDep, authorization: str = Header(...), roomId: int = Query(...)):
-    return await print_record_core(session, authorization, roomId)
+async def print_record(session: SessionDep, roomId: int = Query(...)):
+    return await print_record_core(session, roomId)
     
 
 # 管理员调整中央空调的全局设置，包括工作模式、温度范围和风速费率。
@@ -110,4 +149,3 @@ async def get_guest_log(session: SessionDep, authorization: str = Header(...)):
 @app.get("/admin/query_room")
 async def get_room_state(session: SessionDep, authorization: str = Header(...)):
     return await get_room_state_core(session, authorization)
-
