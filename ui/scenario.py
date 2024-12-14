@@ -1,4 +1,4 @@
-# scenario.py
+# frontend/scenario.py
 import csv
 import os
 
@@ -17,21 +17,29 @@ def load_scenario(mode="cold"):
             minute = int(row["minute"])
             roomId = row["roomId"]
             power = row["power"]
-            temperature = int(row["temperature"])
+            temperature = row["temperature"]
             windSpeed = row["windSpeed"]
             sweep = row["sweep"]
-            actions.append((minute, roomId, {
-                "power": power,
-                "temperature": temperature,
-                "windSpeed": windSpeed,
-                "sweep": sweep
-            }))
+            action = {}
+            if power:
+                action["power"] = power
+            if temperature:
+                try:
+                    action["temperature"] = int(temperature)
+                except ValueError:
+                    action["temperature"] = None
+            if windSpeed:
+                action["windSpeed"] = windSpeed
+            if sweep:
+                action["sweep"] = sweep
+            actions.append({"minute": minute, "roomId": roomId, "action": action})
+    # Sort actions by minute
+    actions = sorted(actions, key=lambda x: x['minute'])
     return actions
 
 def get_actions_for_room(room_id, mode="cold"):
     all_actions = load_scenario(mode)
-    # 筛选当前房间的动作，并按照minute排序
-    room_actions = [act for (m, r, act) in all_actions if r == str(room_id)]
-    # 根据minute排序
-    room_actions = sorted(room_actions, key=lambda a: next(m for m, r, act in all_actions if r == str(room_id) and act == a))
+    # 筛选动作属于指定房间的，并按照minute排序
+    room_actions = [a['action'] for a in all_actions if a['roomId'] == str(room_id)]
+    # 已经按分钟排序
     return room_actions

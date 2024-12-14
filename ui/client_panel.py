@@ -1,4 +1,4 @@
-# client_panel.py
+# frontend/client_panel.py
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QTimer  # 从QtCore导入QTimer
@@ -34,7 +34,7 @@ class ClientPanel(QWidget):
             res = post_json("/aircon/control", data, headers=headers)
             if res and res.status_code == 200:
                 d = res.json()
-                if d["code"] == 0:
+                if d.get("code") == 0:
                     self.info_label.setText(f"第{self.current_step + 1}步: 已执行操作 {json.dumps(action, ensure_ascii=False)}")
                 else:
                     self.info_label.setText(f"执行失败: {d.get('message','未知错误')}")

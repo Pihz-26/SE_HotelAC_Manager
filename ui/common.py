@@ -1,4 +1,4 @@
-# common.py
+# frontend/common.py
 import requests
 
 API_URL = "http://10.29.149.249:8000"  # 根据实际情况修改后端地址
@@ -16,12 +16,11 @@ def post_json(url, data=None, headers=None):
         print(f"POST请求异常: {e}")
         return None
 
-def get_json(url, headers=None, json_data=None):
+def get_json(url, headers=None, params=None):
     if headers is None:
         headers = {}
-    # 部分GET接口需要body请求
     try:
-        response = requests.request("GET", f"{API_URL}{url}", headers=headers, json=json_data, timeout=10)
+        response = requests.get(f"{API_URL}{url}", headers=headers, params=params, timeout=10)
         return response
     except requests.exceptions.RequestException as e:
         print(f"GET请求异常: {e}")
