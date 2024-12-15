@@ -1,6 +1,8 @@
 from typing import Annotated, List, Optional
 from enum import Enum
-from fastapi import Depends, HTTPException
+from fastapi import Depends
+from respond_body import NormalRespond
+from sqlalchemy import func
 from sqlmodel import Field, Session, SQLModel, Relationship, create_engine, select
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
@@ -47,6 +49,7 @@ class Room(SQLModel, table=True):
     # 定义与 HotelCheck 的关系
     hotel_checks: List["HotelCheck"] = Relationship(back_populates="room")
     status:Status = Field(default=Status.noschedule, description="AC schedule status")
+    daily_cost: int = Field(default=0)
     
     
     
@@ -85,7 +88,15 @@ class acPamater(SQLModel, table=True):
     low_cost_rate: float = Field(default=0.5)
     middle_cost_rate: float = Field(default=1.0)
     high_cost_rate: float = Field(default=2.0)
-       
+    
+class acScheduleLog(SQLModel, table=True): 
+    time: datetime = Field(default_factory=datetime.now, primary_key=True, description="the time of acSchedule state")
+    waitQueue: str = Field(default="")
+    runningQueue: str = Field(default="")
+
+
+    
+    
        
 class User(SQLModel, table=True):
     user_id: str = Field(default="123", primary_key=True)
@@ -147,8 +158,17 @@ def data_check_in(check_in_data:RoomCheckIn, session: SessionDep):
         if room:
             hotel_check.room = room  # 设置房间关系
             room.state = True  # 更新房间状态为已入住
+            # 计费状态初始化
+            room.cost = 0
+            room.totalCost = 0
+            # 空调状态初始化
+            room.power = False
+            room.roomTemperature = room.environTemperature
+            room.targetTemperature = 25
+            room.wind_level = WindLevel.Medium
+            room.sweep = False
+            room.status = Status.noschedule
             room.hotel_checks.append(hotel_check)  # 更新房间的入住记录
-        
         final_data.append(hotel_check)
     session.add_all(final_data)
     session.commit()
@@ -175,62 +195,72 @@ def delete_room(room_id: str, session: SessionDep):
     session.commit()
     
 # 数据库中进行退房数据更改，请在执行前进行相应数据的合法性检测
-def data_check_out(room_id: str, session: SessionDep):  
-    
+def data_check_out(room_id: str, session: SessionDep):     
     rooms = session.exec(select(Room).where(Room.room_id == room_id)).all()
     room = rooms[0]
     if not room:
-        raise HTTPException(status_code=404, detail="房间不存在")
-    
-    # 查找该房间是否有入住记录
-    statement = select(HotelCheck).where(
-        HotelCheck.room_id == room_id,
-        HotelCheck.check_in_date != None,  # 确保是未退房的记录
-        HotelCheck.check_out_date == None 
-    )
-    results = session.exec(statement).all()
-    print(results)
-    if not results:
-        raise HTTPException(status_code=404, detail="该房间没有入住记录")
-    data_list = []
+        return NormalRespond (
+            code=1, 
+            message="房间不存在"
+            )
+    else:
+        room.power = False
+        room.state = False
     # 获取当前时间
     check_out_time = datetime.now()
-    for hotel_check in results:
-        print(hotel_check)
-        # 获取顾客入住时间
-        check_in_time = hotel_check.check_in_date
-        # 退房操作：更新房间状态，清除顾客入住记录
-        hotel_check.check_out_date = check_out_time
-        print(check_in_time, check_out_time)
-        # 计算入住天数
-        stay_duration = (check_out_time - check_in_time).days
-        if stay_duration == 0:
-            stay_duration = 1  # 至少1天入住费用
-
-        # 计算房费（假设房费为 100 元/天）
-        room_cost = 100 * stay_duration  # 假设每晚住宿费为100元
-        print(room_cost)
-        # 查询空调消费记录
-        ac_logs = session.exec(select(acLog).where(acLog.room_id == room_id).where(acLog.change_time >= check_in_time).where(acLog.change_time <= check_out_time)).all()
-        ac_cost = sum(log.cost for log in ac_logs)  # 空调总费用计算
+    data = {}
+    if not room.hotel_checks:
+        return NormalRespond(
+            code=1, 
+            message="该房间没有入住记录"
+            )
         
-        # 生成账单
-        total_cost = room_cost + ac_cost
-        
-        data = {
-        "roomCost": room_cost,
-        "acCost": ac_cost,
-        "totalCost": total_cost,
-        "stayDuration": stay_duration,
-        "acLogs": [{"time": log.change_time, "cost": log.cost} for log in ac_logs]  # 可选：空调详单
-        } 
-        data_list.append(data)
-
-    room.state = False  # 房间状态更新
+    hotel_check = room.hotel_checks[-1]
+    # print(hotel_check)
+    # 获取顾客入住时间
+    check_in_time = hotel_check.check_in_date
+    # 退房操作：更新房间状态，清除顾客入住记录
+    hotel_check.check_out_date = check_out_time
     session.commit()
 
-    # 返回账单信息和结算凭据给顾客
-    return data_list[0]
+    statement = (select(acLog)).where(
+        acLog.change_time >= check_in_time,
+        acLog.change_time <= check_out_time,
+        acLog.power == False
+        )
+    
+    results = session.exec(statement).all()
+    off_count = len(results)
+
+    
+    if off_count == 0:
+        off_count = 1  # 至少1天入住费用
+    # print(off_count)
+
+    # 计算房费
+    room_cost = room.daily_cost * off_count  # 假设每晚住宿费为100元
+    print(room_cost)
+    # 查询空调消费记录
+    ac_logs = session.exec(select(acLog).where(acLog.room_id == room_id).where(acLog.change_time >= check_in_time).where(acLog.change_time <= check_out_time)).all()
+    ac_cost = sum(log.cost for log in ac_logs)  # 空调总费用计算
+    
+    # 生成账单
+    total_cost = room_cost + ac_cost
+    
+    data = {
+    "roomCost": room_cost,
+    "acCost": ac_cost,
+    "totalCost": total_cost,
+    "stayDuration": off_count,
+    # "acLogs": [{"time": log.change_time, "cost": log.cost} for log in ac_logs]
+    }
+    
+    return {
+        "code": 0,
+        "message": "退房成功",
+        "bill":data
+    }
+        
 
 
 def delete_acLog(room_id: str, session: SessionDep):
@@ -289,9 +319,9 @@ def updateAcControl(ac_model: ACModel, temperature: int):
 
 def init_users(session: SessionDep):
     predefined_users = [
-        {"user_id": "admin", "password": "admin123", "role": "admin"},
-        {"user_id": "manager", "password": "manager123", "role": "manager"},
-        {"user_id": "guest", "password": "guest123", "role": "guest"}
+        {"user_id": "front_desk", "password": "front_desk", "role": "前台服务"},
+        {"user_id": "ac_manager", "password": "ac_manager", "role": "空调管理"},
+        {"user_id": "manager", "password": "manager", "role": "酒店经理"}
     ]
 
     for user_data in predefined_users:
@@ -309,26 +339,81 @@ def init_users(session: SessionDep):
             print(f"User {user_data['user_id']} already exists.")
 
 
-# def init_rooms(session):
-#     # 生成40个房间数据
-#     rooms = []
-#     for i in range(10):
-#         # 标准房
-#         rooms.append(Room(room_id=f"200{i+1}", room_level=RoomLevel.Standard, state=False))
-#         rooms.append(Room(room_id=f"300{i+1}", room_level=RoomLevel.Standard, state=False))
-#         rooms.append(Room(room_id=f"400{i+1}", room_level=RoomLevel.Standard, state=False))
-        
-#         # 大床房
-#         rooms.append(Room(room_id=f"500{i+1}", room_level=RoomLevel.Queen, state=False))
+def init_acc_cold(session: SessionDep):
+    # 更新空调控制表
+    ac_control = acControl(ac_model=ACModel(0), temperature=26)  # 默认温度为26度
+    
 
-#     # 将房间数据添加到数据库
-#     try:
-#         session.add_all(rooms)
-#         session.commit()  # 提交到数据库
-#         print("40个房间数据已成功初始化")
-#     except IntegrityError:
-#         session.rollback()  # 如果已存在房间数据，回滚操作
-#         print("房间数据已经存在")
+    ac_param = acPamater()  # 如果没有记录，创建新的
+    ac_param.low_cost_rate = 0.33
+    ac_param.middle_cost_rate = 0.5
+    ac_param.high_cost_rate = 1
+    try:
+        session.add(ac_control)
+        session.add(ac_param)
+        session.commit()  # 提交到数据库
+        print("中央空调已成功初始化为制冷")
+    except IntegrityError:
+        session.rollback()
+        print("中央空调已为制冷")
+        
+
+def init_acc_hot(session: SessionDep):
+    # 更新空调控制表
+    ac_control = acControl(ac_model=ACModel(1), temperature=26)  # 默认温度为26度
+    
+
+    ac_param = acPamater()  # 如果没有记录，创建新的
+    ac_param.low_cost_rate = 0.33
+    ac_param.middle_cost_rate = 0.5
+    ac_param.high_cost_rate = 1
+    try:
+        session.add(ac_control)
+        session.add(ac_param)
+        session.commit()  # 提交到数据库
+        print("中央空调已成功初始化为制热")
+    except IntegrityError:
+        session.rollback()
+
+
+def init_rooms_cold(session:SessionDep):
+    # 初始化5个房间数据
+    rooms = []
+    
+    rooms.append(Room(room_id=f"2001", daily_cost=100, roomTemperature=32, environTemperature=32))
+    rooms.append(Room(room_id=f"2002", daily_cost=125, roomTemperature=28, environTemperature=28))
+    rooms.append(Room(room_id=f"2003", daily_cost=150, roomTemperature=30, environTemperature=30))
+    rooms.append(Room(room_id=f"2004", daily_cost=200, roomTemperature=29, environTemperature=29))
+    rooms.append(Room(room_id=f"2005", daily_cost=100, roomTemperature=35, environTemperature=35))
+
+    # 将房间数据添加到数据库
+    try:
+        session.add_all(rooms)
+        session.commit()  # 提交到数据库
+        print("5个房间数据已成功初始化")
+    except IntegrityError:
+        session.rollback()  # 如果已存在房间数据，回滚操作
+        print("房间数据已经存在")
+
+
+def init_rooms_hot(session:SessionDep):
+    # 初始化5个房间数据
+    rooms = []
+    
+    rooms.append(Room(room_id=f"2001", daily_cost=100, roomTemperature=10, environTemperature=10, targetTemperature=22))
+    rooms.append(Room(room_id=f"2002", daily_cost=125, roomTemperature=15, environTemperature=15, targetTemperature=22))
+    rooms.append(Room(room_id=f"2003", daily_cost=150, roomTemperature=18, environTemperature=18, targetTemperature=22))
+    rooms.append(Room(room_id=f"2004", daily_cost=200, roomTemperature=12, environTemperature=12, targetTemperature=22))
+    rooms.append(Room(room_id=f"2005", daily_cost=100, roomTemperature=14, environTemperature=14, targetTemperature=22))
+
+    # 将房间数据添加到数据库
+    try:
+        session.add_all(rooms)
+        session.commit()  # 提交到数据库
+        print("5个房间数据已成功初始化")
+    except IntegrityError:
+        session.rollback()  # 如果已存在房间数据，回滚操作
+        print("房间数据已经存在")
     
 
     

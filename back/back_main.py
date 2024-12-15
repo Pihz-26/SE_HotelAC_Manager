@@ -3,7 +3,6 @@ from core import *
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from schedule import start_scheduler
-import uvicorn
     
     
 @asynccontextmanager
@@ -12,7 +11,10 @@ async def lifespan(app: FastAPI):
     with Session(engine) as session:
         create_db_and_tables(session)
         init_users(session)
-        # init_rooms(session)
+        init_rooms_hot(session)
+        init_acc_hot(session)
+        # init_rooms_cold(session)
+        # init_acc_cold(session)
     # 启动调度器
     print("Starting scheduler...")
     start_scheduler()
@@ -116,19 +118,20 @@ async def print_record(session: SessionDep, roomId: int = Query(...)):
 @app.post("/central-aircon/adjust")
 async def control_ac(
     adjust_request:CenterAcControlRequest,  # 请求数据
-    session: SessionDep # 获取数据库 session
+    session: SessionDep, # 获取数据库 session
+    authorization: str = Header(...)
 ):
     # 调用core.py中的control_ac_core函数
-    return await control_ac_core(adjust_request, session)
+    return await control_ac_core(adjust_request, session, authorization)
 
 # 管理员实时获取酒店所有房间空调的运行状态和参数信息。
 @app.get("/aircon/status")
-async def get_ac_states(session: SessionDep):
+async def get_ac_states(session: SessionDep, authorization: str = Header(...)):
     """
     管理员获取整个酒店空调的运行状态和参数信息。
     调用核心函数获取空调状态数据并返回。
     """
-    return await get_ac_states_core(session)
+    return await get_ac_states_core(session, authorization)
 
 # 获取空调最近一周的操作记录
 @app.get("/admin/query_ac")
@@ -136,7 +139,7 @@ async def get_ac_control_log(session: SessionDep, authorization: str = Header(..
     return await get_ac_control_log_core(session, authorization)
 
 # 获取空调一周的调度记录
-@app.get("/admin/query_ac")
+@app.get("/admin/query_schedule")
 async def get_ac_schedule_log(session: SessionDep, authorization: str = Header(...)):
     return await get_ac_schedule_log_core(session, authorization)
 
@@ -146,6 +149,6 @@ async def get_guest_log(session: SessionDep, authorization: str = Header(...)):
     return await get_guest_log_core(session, authorization)
 
 # 获取所有房间信息
-@app.get("/admin/query_room")
+@app.post("/admin/query_room")
 async def get_room_state(session: SessionDep, authorization: str = Header(...)):
     return await get_room_state_core(session, authorization)

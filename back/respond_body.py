@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Literal, List  # 引入List 
+from typing import Optional, Literal, List
 from datetime import datetime
 
 class Person(BaseModel):
@@ -25,7 +25,7 @@ class RoomACData(BaseModel):
 class CheckInState(BaseModel):
     roomId: int  
     roomLevel: str
-    cost: int
+    cost: float
     checkInTime: Optional[datetime]  
     people: List[Person]  
 
@@ -73,15 +73,15 @@ class AcControlLog(BaseModel):
     
 class AcScheduleLog(BaseModel):
     time: datetime
-    waitQueue: Optional[int]
-    runningQueue: Optional[int] 
+    waitQueue: list
+    runningQueue: list
     
 class RoomStatus(BaseModel):
     roomId: int
     roomLevel: str
     people: List[Person]
-    cost: int
-    roomTemperature: int
+    cost: float
+    roomTemperature: float
     power: str
     temperature: int
     windSpeed: str
@@ -178,5 +178,4 @@ class CenterAcControlRequest(BaseModel):
     mode: int
     resourceLimit: int
     fanRates: Optional[FanRate]
-    
     

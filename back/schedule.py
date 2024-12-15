@@ -1,9 +1,6 @@
 import threading 
 from dbcontrol import *
-from contextlib import asynccontextmanager
-from apscheduler.schedulers.blocking import BlockingScheduler 
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
 from typing import List
 from sqlalchemy import and_
 
@@ -157,6 +154,19 @@ def callback( ):
             i-=1
             len_a-=1
         i+=1
+        
+    len_r =len(AC_ready)
+    i=0
+    while(i!=len_r):
+        # active_deltas = " ".join([str(ac.tar_temp - ac.cur_temp) for ac in AC_active])
+        # print(f"AC_active 中的 deltas: {active_deltas}")
+        if (((AC_ready[i].cur_temp - AC_ready[i].tar_temp)>-0.01) and AC_ready[i].model) or (((AC_ready[i].cur_temp - AC_ready[i].tar_temp)<0.01) and not AC_ready[i].model):
+            ac_r=AC_ready.pop(i)
+            ac_r.start_time = now
+            AC_over.append(ac_r)
+            i-=1
+            len_r-=1
+        i+=1
     # over_ids = " ".join([ac.ac_id for ac in AC_over])
     # print(f"AC_over 中的 room_id: {over_ids}")
   
@@ -164,7 +174,8 @@ def callback( ):
     # 首先进行等待序列的排序，按照风速等级+等待时间进行排序
     AC_ready = sorted(AC_ready, key=lambda ac: (-ac.wind_level, ac.start_time))
     AC_active = sorted(AC_active, key=lambda ac: (ac.wind_level, ac.start_time))
-    
+ 
+        
     # 首先将ready中优先级最高的加入到active中
     while(len(AC_active)<3 and len(AC_ready)>0):
         ac_r = AC_ready.pop(0)
@@ -190,13 +201,20 @@ def callback( ):
                 ac_r.start_time = now
                 AC_active.append(ac_r)
                 AC_ready.append(ac_a)
+    # 打印 AC_active 和 AC_ready 中的 room_id，以空格分隔
+    active_ids = ' '.join([ac.ac_id for ac in AC_active])
+    ready_ids  = ' '.join([ac.ac_id for ac in AC_ready])
+
+    if(active_ids or ready_ids):
+        schedule_log = acScheduleLog(time=datetime.now(),waitQueue=ready_ids,runningQueue = active_ids)
+        session.add(schedule_log)
+        session.commit()
     session.close()
-        # 打印 AC_active 和 AC_ready 中的 room_id，以空格分隔
-    active_ids = " ".join([ac.ac_id for ac in AC_active])
-    ready_ids = " ".join([ac.ac_id for ac in AC_ready])
+    over_ids = ' '.join([ac.ac_id for ac in AC_over])
 
     print(f"AC_active 中的 room_id: {active_ids}")
     print(f"AC_ready 中的 room_id: {ready_ids}")
+    print(f"AC_over 中的 room_id: {over_ids}")
     lock.release()
 
 
@@ -280,24 +298,26 @@ def roomcost_update():
     rooms_to_update = []
     lock.acquire()
     for room_id in room_ids:
-        # 查找该房间的所有acLog记录
-        logs = session.exec(
-            select(acLog).where(acLog.room_id == room_id).order_by(acLog.change_time.desc())
-        ).all()
+        # 更新 Room 表中的 cost 和 totalCost
+        room = session.exec(select(Room).where(Room.room_id == room_id)).first()
+        if room and room.hotel_checks:
+            hotel_check = room.hotel_checks[-1]
+            # 查找该房间的所有acLog记录
+            logs = session.exec(
+                select(acLog).where(acLog.room_id == room_id, acLog.change_time >= hotel_check.check_in_date).order_by(acLog.change_time.desc())
+            ).all()
 
-        if logs:
-            # 计算所有acLog记录的cost之和
-            total_cost = sum(log.cost for log in logs)
-            
-            # 获取最新一条acLog记录的cost
-            latest_aclog = logs[0] 
-            
-            # 更新 Room 表中的 cost 和 totalCost
-            room = session.exec(select(Room).where(Room.room_id == room_id)).first()
-            if room:
-                room.cost = latest_aclog.cost  # 更新最新记录的cost
+            if logs:
+                # 计算所有acLog记录的cost之和
+                total_cost = sum(log.cost for log in logs)
+                
+                # 获取最新一条acLog记录的cost
+                latest_aclog = logs[0] 
+                room.cost =  latest_aclog.cost  # 更新最新记录的cost
                 room.totalCost = total_cost  # 更新totalCost为所有acLog记录的cost之和
                 rooms_to_update.append(room)
+        
+            
 
     # 批量提交所有修改的房间
     if rooms_to_update:
