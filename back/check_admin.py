@@ -28,9 +28,9 @@ def check_admin(authorization: str):
             response = NormalRespond(code=1, message="权限不足")
     # 解码失败
     except jwt.ExpiredSignatureError:  # Token过期
-        response = NormalRespond(code=1, message="Token expired")
+        response = NormalRespond(code=1, message="Token 已过期")
     except jwt.InvalidTokenError:  # Token无效
-        response =  NormalRespond(code=1, message="Invalid token")
+        response =  NormalRespond(code=1, message="非法的 token")
     except Exception as e:  # 其他错误（如Token格式不对）
         response = NormalRespond(code=1, message="认证失败")
 
