@@ -3,8 +3,29 @@ from dbcontrol import *
 from apscheduler.schedulers.background import BackgroundScheduler
 from typing import List
 from sqlalchemy import and_
-
+# ========================
+# 空调调度系统代码模块
+# ========================
+# 模块描述：
+# 该模块实现了空调调度系统，包括空调运行队列、等待队列和休息队列的管理，
+# 以及温度更新、运行日志记录和空调的调度策略。
+# 功能包括：
+# 1. 动态管理空调运行状态（运行、等待、休息）。
+# 2. 实现基于优先级的调度策略（风速优先级+时间片轮转）。
+# 3. 温度实时更新逻辑。
+# 4. 记录空调运行成本。
+#
+# 创建者：皮皓哲
+# 创建时间：2024年12月1日
+# 修改者：赵首胜
+# 修改时间：2024年12月7日，8日，9日
+# 修改内容：完善空调时间片调度策略，队列pop方法debug，加入计温计费逻辑，完成调度测试用例
+# ========================
 class acRunning:
+    """
+    描述：空调运行对象。
+    用于存储单台空调的实时状态，包括启动时间、当前温度、目标温度、环境温度等信息。
+    """
     def __init__(self, start_time: datetime, wind_level: WindLevel, ac_id: str, 
                  cur_temp: float, tar_temp: float, env_temp: float, model: ACModel):
         self.start_time = start_time           # 空调启动时间
@@ -15,19 +36,27 @@ class acRunning:
         self.env_temp = env_temp               # 环境温度
         self.model = model                     # 空调模式（制冷/制热
 
-# 正在运行的列表
+# 正在运行的空调列表
 AC_active:List[acRunning] = []
 
-# 正在等待的列表
+# 正在等待的空调列表
 AC_ready:List[acRunning] = []
 
 # 达成目标温度后正在休息的列表
 AC_over:List[acRunning] = []
 
+# 线程锁，用于保证多线程操作的安全性
 lock = threading.Lock()
 
 
 def update_ac_queues(session: Session):
+    """
+    功能描述：
+    更新空调队列（运行、等待、休息）的状态，检查空调是否关机或状态变化，并同步数据库中的房间状态。
+    
+    参数：
+    - session: 数据库会话对象
+    """
     # 记录所有修改过的房间
     rooms_to_update = []
     # 检查正在运行的队列
@@ -43,7 +72,7 @@ def update_ac_queues(session: Session):
                 AC_active.pop(i)  # 使用 pop(i) 移除空调对象
                 i-=1
                 len_a-=1
-            else:
+            else:#更新房间温度、风速状态
                 AC_active[i].wind_level=room.wind_level
                 AC_active[i].tar_temp=room.targetTemperature
         i+=1
@@ -61,7 +90,7 @@ def update_ac_queues(session: Session):
                 AC_ready.pop(i)  # 使用 pop(i) 移除空调对象
                 i-=1
                 len_r-=1
-            else:
+            else:#更新房间温度、风速状态
                 AC_ready[i].wind_level=room.wind_level
                 AC_ready[i].tar_temp=room.targetTemperature
         i+=1
@@ -79,7 +108,7 @@ def update_ac_queues(session: Session):
                 AC_over.pop(i)  # 使用 pop(i) 移除空调对象
                 i-=1
                 len_o-=1
-            else:
+            else:#更新房间温度、风速状态
                 AC_over[i].wind_level=room.wind_level
                 AC_over[i].tar_temp=room.targetTemperature
         i+=1
@@ -89,17 +118,20 @@ def update_ac_queues(session: Session):
         session.commit()  # 提交所有修改
 
 
-timeslice = 20
+timeslice = 20#一个等待服务时长，亦即时间片长度，为加快测试，由原来的2分钟变为20s
 
 def callback( ):
+    """
+    功能描述：
+    调度回调函数，按照优先级和时间片轮转策略更新空调运行状态，并记录日志。
+    """
     global AC_ready  # 显式声明AC_ready为全局变量
     global AC_active  # 显式声明AC_ready为全局变量
     global AC_over  # 显式声明AC_ready为全局变量
     global lock
-    session = get_session_()
-    # 上锁，每次需要进行空调使用，直接将类放入ready列表中，注意上锁
+    session = get_session_()#获取数据库会话
     ac_control = session.exec(select(acControl).order_by(acControl.record_time.desc())).first() #查找空调模式
-    # print(ac_control)
+    # 加锁，确保调度操作的线程安全
     lock.acquire()
     temperature_update()
     # 更新当前的列表内部状态
@@ -127,10 +159,8 @@ def callback( ):
             print(AC_ready)
     # print(AC_ready)
     update_ac_queues(session)
+
     # 检查当前的over列表中是否有待执行的内容
-    # over_deltas = " ".join([str(ac.tar_temp - ac.cur_temp) for ac in AC_over])
-    # print(f"AC_over 中的 deltas: {over_deltas}")
-    len_o =len(AC_over)
     i =0
     while(i!=len_o):
         if (AC_over[i].cur_temp - AC_over[i].tar_temp>= 0.99 and not AC_over[i].model) or (AC_over[i].tar_temp -AC_over[i].cur_temp >= 0.99 and AC_over[i].model):
@@ -154,7 +184,8 @@ def callback( ):
             i-=1
             len_a-=1
         i+=1
-        
+
+    # 检查当前ready队列中有没有已经达到要求的数据,移动到over队列   
     len_r =len(AC_ready)
     i=0
     while(i!=len_r):
@@ -167,9 +198,7 @@ def callback( ):
             i-=1
             len_r-=1
         i+=1
-    # over_ids = " ".join([ac.ac_id for ac in AC_over])
-    # print(f"AC_over 中的 room_id: {over_ids}")
-  
+
             
     # 首先进行等待序列的排序，按照风速等级+等待时间进行排序
     AC_ready = sorted(AC_ready, key=lambda ac: (-ac.wind_level, ac.start_time))
@@ -181,10 +210,10 @@ def callback( ):
         ac_r = AC_ready.pop(0)
         ac_r.start_time = now
         AC_active.append(ac_r)
-    # 将ready中最优先加入的和active中最优先脱出的进行比较，可以仔细想想其中的逻辑，本身应该没有问题
+    # 将ready中最优先加入的和active中最优先脱出的进行比较
     ran = min(3, len(AC_active), len(AC_ready))
     for i in range(ran):
-        # 等待中的风速等级更高的情况中
+        # 等待中的风速等级更高的情况中(优先级调度)
         if AC_ready[0].wind_level > AC_active[0].wind_level:
             ac_r = AC_ready.pop(0)
             ac_a = AC_active.pop(0)
@@ -192,7 +221,7 @@ def callback( ):
             ac_a.start_time = now
             AC_ready.append(ac_a)
             AC_active.append(ac_r)
-        # 风速相等的情况下，查看是否完成了时间片
+        # 风速相等的情况下，查看是否完成了时间片(时间片调度)
         elif AC_ready[0].wind_level == AC_active[0].wind_level:
             if round((now - AC_ready[0].start_time).total_seconds()) >= timeslice:
                 ac_a = AC_active.pop(0)
@@ -201,17 +230,19 @@ def callback( ):
                 ac_r.start_time = now
                 AC_active.append(ac_r)
                 AC_ready.append(ac_a)
-    # 打印 AC_active 和 AC_ready 中的 room_id，以空格分隔
+
+    
     active_ids = ' '.join([ac.ac_id for ac in AC_active])
     ready_ids  = ' '.join([ac.ac_id for ac in AC_ready])
 
+    #数据库储存空调运行队列和等待队列的调度记录
     if(active_ids or ready_ids):
         schedule_log = acScheduleLog(time=datetime.now(),waitQueue=ready_ids,runningQueue = active_ids)
         session.add(schedule_log)
         session.commit()
     session.close()
     over_ids = ' '.join([ac.ac_id for ac in AC_over])
-
+    # 打印 AC_active ， AC_ready和AC_over队列信息，方便后端监控
     print(f"AC_active 中的 room_id: {active_ids}")
     print(f"AC_ready 中的 room_id: {ready_ids}")
     print(f"AC_over 中的 room_id: {over_ids}")
@@ -220,6 +251,10 @@ def callback( ):
 
 CHECK_TIME = 10
 def temperature_update():
+    """
+    功能描述：
+    更新空调队列中的温度，根据当前模式（制冷/制热）和风速计算温度变化。
+    """
     global AC_ready  # 显式声明AC_ready为全局变量
     global AC_active  # 显式声明AC_ready为全局变量
     global AC_over  # 显式声明AC_ready为全局变量
@@ -291,6 +326,10 @@ def temperature_update():
 
 
 def roomcost_update():
+    """
+    功能描述：
+    更新房间的空调运行成本和总成本。
+    """
     session = get_session_()
     # 获取所有房间ID
     room_ids = session.exec(select(Room.room_id)).all()
@@ -327,7 +366,11 @@ def roomcost_update():
     lock.release()
 
 def start_scheduler():
-    scheduler = BackgroundScheduler()
+    """
+    功能描述：
+    启动调度器，定期调用回调函数和成本更新函数。
+    """
+    scheduler = BackgroundScheduler()#调度器对象
     # scheduler.add_job(temperature_update, 'interval', seconds= CHECK_TIME)
     scheduler.add_job(callback, 'interval', seconds= CHECK_TIME)  # 每10秒执行一次回调
     scheduler.add_job(roomcost_update, 'interval', seconds= CHECK_TIME)
